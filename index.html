@@ -89,6 +89,11 @@ EC.e = async (chunkId) => {
     console.log("loaded chunk", chunkId);
 };
 
+// 外部chunkロードを潰す
+EC.f = {};
+EC.e = async (chunkId) => {
+    console.log("blocked chunk load:", chunkId);
+};
 window.EC = EC;
 </script>
 
