@@ -1,53 +1,66 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="UTF-8">
-<title>Proxy Loader</title>
+    <meta charset="UTF-8">
+    <title>Bloxd Module Inspector</title>
+    <style>
+        body { font-family: sans-serif; background: #1e1e1e; color: #eee; padding: 20px; }
+        #status { color: #ffca28; margin-bottom: 10px; }
+        pre { background: #000; padding: 10px; overflow: auto; max-height: 400px; border: 1px solid #444; }
+    </style>
 </head>
 <body>
 
-<h1>Bloxd Chunk Loader (Proxy)</h1>
+<h1>Bloxd Module Inspector</h1>
+<div id="status">準備中...</div>
+
+<h3>モジュール一覧 (Consoleも確認してください)</h3>
+<pre id="output">読み込みを待機中...</pre>
 
 <script>
-// ===== webpackChunkフック =====
+// 1. webpackフックの準備
 window.capturedModules = {};
-
 self.webpackChunk = self.webpackChunk || [];
 const origPush = self.webpackChunk.push.bind(self.webpackChunk);
 
 self.webpackChunk.push = function(chunk) {
-    console.log("チャンク取得:", chunk);
-    Object.assign(window.capturedModules, chunk[1]);
+    const modules = chunk[1];
+    Object.assign(window.capturedModules, modules);
+    document.getElementById('status').innerText = "チャンクを捕捉しました！";
     return origPush(chunk);
 };
 
-// ===== プロキシ経由で取得 =====
-const url = "https://bloxd.io/static/js/b6al35.3.ded95fa6.chunk.js";
+// 2. ターゲットURLとプロキシ
+const targetUrl = "https://bloxd.io/static/js/rrdnom.5.f00d9975.chunk.js";
+const proxy = "https://cors-anywhere.herokuapp.com/"; // 要アクセス許可
 
-// 公開プロキシ（使えない場合ある）
-const proxy = "https://cors-anywhere.herokuapp.com/";
+fetch(proxy + targetUrl)
+    .then(res => {
+        if (!res.ok) throw new Error("CORSプロキシへのアクセスが拒否されました");
+        return res.text();
+    })
+    .then(code => {
+        document.getElementById('status').innerText = "コード取得成功。実行中...";
+        
+        // exportを削除して実行可能にする
+        const cleanCode = code.replace(/export\s+/g, "");
+        
+        // scriptタグとして挿入（evalより安全でデバッグしやすい）
+        const script = document.createElement('script');
+        script.textContent = cleanCode;
+        document.body.appendChild(script);
 
-fetch(proxy + url)
-.then(res => res.text())
-.then(code => {
-
-    // 🔥 export削除（超重要）
-    code = code.replace(/export\s+/g, "");
-
-    // 実行
-    eval(code);
-
-    console.log("読み込み完了");
-
-})
-.catch(err => console.error(err));
-
-
-// ===== 後で確認 =====
-setTimeout(() => {
-    console.log("modules一覧:", Object.keys(window.capturedModules));
-}, 3000);
+        setTimeout(() => {
+            const keys = Object.keys(window.capturedModules);
+            document.getElementById('output').innerText = 
+                `捕捉したモジュール数: ${keys.length}\nキー一覧:\n` + keys.join("\n");
+            console.log("Captured Modules:", window.capturedModules);
+        }, 1000);
+    })
+    .catch(err => {
+        document.getElementById('status').innerText = "エラー: " + err.message;
+        document.getElementById('output').innerText = "CORS Anywhereのデモページで許可を得ているか確認してください。";
+    });
 </script>
-
 </body>
 </html>
