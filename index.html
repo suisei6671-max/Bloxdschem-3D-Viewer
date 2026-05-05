@@ -1,66 +1,46 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <title>Bloxd Module Inspector</title>
-    <style>
-        body { font-family: sans-serif; background: #1e1e1e; color: #eee; padding: 20px; }
-        #status { color: #ffca28; margin-bottom: 10px; }
-        pre { background: #000; padding: 10px; overflow: auto; max-height: 400px; border: 1px solid #444; }
-    </style>
+<meta charset="UTF-8">
+<title>bloxd loader</title>
 </head>
 <body>
 
-<h1>Bloxd Module Inspector</h1>
-<div id="status">準備中...</div>
-
-<h3>モジュール一覧 (Consoleも確認してください)</h3>
-<pre id="output">読み込みを待機中...</pre>
+<h2>bloxd chunk test</h2>
 
 <script>
-// 1. webpackフックの準備
-window.capturedModules = {};
-self.webpackChunk = self.webpackChunk || [];
-const origPush = self.webpackChunk.push.bind(self.webpackChunk);
+const EC = function(id) {
+    if (!EC.m[id]) {
+        throw new Error("Module " + id + " not found");
+    }
+    if (EC.c[id]) return EC.c[id].exports;
 
-self.webpackChunk.push = function(chunk) {
-    const modules = chunk[1];
-    Object.assign(window.capturedModules, modules);
-    document.getElementById('status').innerText = "チャンクを捕捉しました！";
-    return origPush(chunk);
+    const module = { exports: {} };
+    EC.c[id] = module;
+
+    EC.m[id](module, module.exports, EC);
+
+    return module.exports;
 };
 
-// 2. ターゲットURLとプロキシ
-const targetUrl = "https://bloxd.io/static/js/rrdnom.5.f00d9975.chunk.js";
-const proxy = "https://cors-anywhere.herokuapp.com/"; // 要アクセス許可
-
-fetch(proxy + targetUrl)
-    .then(res => {
-        if (!res.ok) throw new Error("CORSプロキシへのアクセスが拒否されました");
-        return res.text();
-    })
-    .then(code => {
-        document.getElementById('status').innerText = "コード取得成功。実行中...";
-        
-        // exportを削除して実行可能にする
-        const cleanCode = code.replace(/export\s+/g, "");
-        
-        // scriptタグとして挿入（evalより安全でデバッグしやすい）
-        const script = document.createElement('script');
-        script.textContent = cleanCode;
-        document.body.appendChild(script);
-
-        setTimeout(() => {
-            const keys = Object.keys(window.capturedModules);
-            document.getElementById('output').innerText = 
-                `捕捉したモジュール数: ${keys.length}\nキー一覧:\n` + keys.join("\n");
-            console.log("Captured Modules:", window.capturedModules);
-        }, 1000);
-    })
-    .catch(err => {
-        document.getElementById('status').innerText = "エラー: " + err.message;
-        document.getElementById('output').innerText = "CORS Anywhereのデモページで許可を得ているか確認してください。";
-    });
+EC.m = {};
+EC.c = {};
+window.EC = EC;
 </script>
+
+<script type="module">
+import * as chunk5 from "./bloxd_source.js";
+
+Object.assign(EC.m, chunk5.modules);
+
+console.log("modules:", Object.keys(chunk5.modules));
+
+// テスト実行
+const first = Object.keys(chunk5.modules)[0];
+console.log("run:", first);
+console.log(EC(first));
+
+</script>
+
 </body>
 </html>
