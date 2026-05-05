@@ -9,80 +9,97 @@
 <h2>bloxd chunk loader (stable)</h2>
 <script>
 // ===============================
-// 最小webpack風コンテナ
+// webpackランタイム（実行可能版）
 // ===============================
-const EC = {
-    m: {}, // modules
-    c: {}  // cache（今回は未使用）
+const EC = function(id) {
+    if (!EC.m[id]) {
+        console.warn("Module missing:", id);
+        return {};
+    }
+
+    if (EC.c[id]) return EC.c[id].exports;
+
+    const module = { exports: {} };
+    EC.c[id] = module;
+
+    try {
+        EC.m[id].call(module.exports, module, module.exports, EC);
+    } catch (e) {
+        console.warn("⚠ module error:", id, e);
+    }
+
+    return module.exports;
+};
+
+EC.m = {};
+EC.c = {};
+
+// helper（必要最低限）
+EC.d = (exports, name, getter) => {
+    Object.defineProperty(exports, name, { enumerable: true, get: getter });
+};
+
+EC.r = (exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
 };
 
 window.EC = EC;
 
 // ===============================
-// chunkからmodulesだけ抽出
+// modules抽出（実行しない）
 // ===============================
 async function loadChunk(path) {
-    console.log("📦 loading:", path);
-
     const text = await fetch(path).then(r => r.text());
 
-    // ===== exportを削除して「return modules」に変換 =====
     const fixed = text
         .replace(/export const id = .*?;/, "")
         .replace(/export const ids = .*?;/, "")
         .replace(/export const modules =/, "return");
 
-    let modules;
-
-    try {
-        modules = new Function(fixed)();
-    } catch (e) {
-        console.error("❌ parse failed:", path, e);
-        return;
-    }
+    const modules = new Function(fixed)();
 
     Object.assign(EC.m, modules);
-
-    console.log("✅ loaded modules:", Object.keys(modules).length);
 }
 
 // ===============================
-// メイン処理
+// 実行フェーズ
 // ===============================
 (async () => {
 
-    console.log("=== module extraction start ===");
+    console.log("=== load modules ===");
 
-    // 必要なchunkを読み込む
     await loadChunk("./bloxd_chunk4.js");
     await loadChunk("./bloxd_chunk5.js");
 
-    const total = Object.keys(EC.m).length;
-
-    console.log("🎯 TOTAL MODULES:", total);
+    console.log("modules:", Object.keys(EC.m).length);
 
     // ===============================
-    // 確認用
+    // 🔥 エントリ候補探し
     // ===============================
-    if (total === 0) {
-        console.warn("⚠ modulesが0 → chunk読み込み失敗");
+    const candidates = Object.entries(EC.m).filter(([id, fn]) =>
+        fn.toString().includes("setup") ||
+        fn.toString().includes("init") ||
+        fn.toString().includes("start")
+    );
+
+    console.log("candidates:", candidates.map(([id]) => id));
+
+    // ===============================
+    // 👇 ここで1つだけ試す（重要）
+    // ===============================
+    const testId = candidates[0]?.[0];
+
+    if (!testId) {
+        console.warn("no candidate");
         return;
     }
 
-    // ===============================
-    // デバッグ：最初の5個見る
-    // ===============================
-    const ids = Object.keys(EC.m).slice(0, 5);
+    console.log("▶ executing:", testId);
 
-    for (const id of ids) {
-        console.log("▶ module:", id);
-        console.log(EC.m[id].toString().slice(0, 200));
-    }
+    const result = EC(testId);
 
-    console.log("=== ready for analysis ===");
+    console.log("result:", result);
 
 })();
-</script>
-
-</body>
+</script></body>
 </html>
