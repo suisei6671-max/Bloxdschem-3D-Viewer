@@ -9,22 +9,77 @@
 <h2>bloxd chunk test</h2>
 
 <script>
+<script>
 const EC = function(id) {
-    if (!EC.m[id]) {
-        throw new Error("Module " + id + " not found");
-    }
+    if (!EC.m[id]) throw new Error("Module " + id + " not found");
     if (EC.c[id]) return EC.c[id].exports;
 
     const module = { exports: {} };
     EC.c[id] = module;
 
-    EC.m[id](module, module.exports, EC);
+    EC.m[id].call(module.exports, module, module.exports, EC);
 
     return module.exports;
 };
 
 EC.m = {};
 EC.c = {};
+
+// ===== ここから追加 =====
+
+// define getter
+EC.d = (exports, name, getter) => {
+    if (!EC.o(exports, name)) {
+        Object.defineProperty(exports, name, {
+            enumerable: true,
+            get: getter
+        });
+    }
+};
+
+// mark as ESModule
+EC.r = (exports) => {
+    if (typeof Symbol !== "undefined" && Symbol.toStringTag) {
+        Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
+    }
+    Object.defineProperty(exports, "__esModule", { value: true });
+};
+
+// hasOwnProperty
+EC.o = (obj, prop) => Object.prototype.hasOwnProperty.call(obj, prop);
+
+// default export helper
+EC.n = (module) => {
+    const getter = module && module.__esModule
+        ? () => module.default
+        : () => module;
+    EC.d(getter, "a", getter);
+    return getter;
+};
+
+// namespace object
+EC.t = (value, mode) => {
+    if (mode & 1) value = EC(value);
+    if (mode & 8) return value;
+    if ((mode & 4) && typeof value === "object" && value && value.__esModule) return value;
+
+    const ns = Object.create(null);
+    EC.r(ns);
+
+    Object.defineProperty(ns, "default", {
+        enumerable: true,
+        value: value
+    });
+
+    if (mode & 2 && typeof value != "string") {
+        for (let key in value) {
+            EC.d(ns, key, ((k) => value[k]).bind(null, key));
+        }
+    }
+
+    return ns;
+};
+
 window.EC = EC;
 </script>
 
