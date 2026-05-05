@@ -2,21 +2,29 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>bloxd loader</title>
+<title>bloxd loader full</title>
 </head>
 <body>
 
-<h2>bloxd chunk test</h2>
+<h2>bloxd chunk loader</h2>
 
 <script>
+// ===== webpackランタイム再現 =====
 const EC = function(id) {
-    if (!EC.m[id]) throw new Error("Module " + id + " not found");
+    if (!EC.m[id]) {
+        console.warn("Module missing:", id);
+        return {};
+    }
     if (EC.c[id]) return EC.c[id].exports;
 
     const module = { exports: {} };
     EC.c[id] = module;
 
-    EC.m[id].call(module.exports, module, module.exports, EC);
+    try {
+        EC.m[id].call(module.exports, module, module.exports, EC);
+    } catch (e) {
+        console.error("Error in module:", id, e);
+    }
 
     return module.exports;
 };
@@ -24,9 +32,7 @@ const EC = function(id) {
 EC.m = {};
 EC.c = {};
 
-// ===== ここから追加 =====
-
-// define getter
+// --- webpack helper群 ---
 EC.d = (exports, name, getter) => {
     if (!EC.o(exports, name)) {
         Object.defineProperty(exports, name, {
@@ -36,7 +42,6 @@ EC.d = (exports, name, getter) => {
     }
 };
 
-// mark as ESModule
 EC.r = (exports) => {
     if (typeof Symbol !== "undefined" && Symbol.toStringTag) {
         Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
@@ -44,10 +49,8 @@ EC.r = (exports) => {
     Object.defineProperty(exports, "__esModule", { value: true });
 };
 
-// hasOwnProperty
 EC.o = (obj, prop) => Object.prototype.hasOwnProperty.call(obj, prop);
 
-// default export helper
 EC.n = (module) => {
     const getter = module && module.__esModule
         ? () => module.default
@@ -56,7 +59,6 @@ EC.n = (module) => {
     return getter;
 };
 
-// namespace object
 EC.t = (value, mode) => {
     if (mode & 1) value = EC(value);
     if (mode & 8) return value;
@@ -79,21 +81,40 @@ EC.t = (value, mode) => {
     return ns;
 };
 
+// chunk loader（簡易）
+EC.e = async (chunkId) => {
+    console.log("load chunk", chunkId);
+    const mod = await import(`./bloxd_chunk${chunkId}.js`);
+    Object.assign(EC.m, mod.modules);
+    console.log("loaded chunk", chunkId);
+};
+
 window.EC = EC;
 </script>
 
 <script type="module">
-import * as chunk5 from "./bloxd_source.js";
+(async () => {
 
-Object.assign(EC.m, chunk5.modules);
+    // ===== chunkロード =====
+    await EC.e(4);
+    await EC.e(5);
 
-console.log("modules:", Object.keys(chunk5.modules));
+    console.log("all modules:", Object.keys(EC.m));
 
-// テスト実行
-const first = Object.keys(chunk5.modules)[0];
-console.log("run:", first);
-console.log(EC(first));
+    // ===== テスト実行 =====
+    const ids = Object.keys(EC.m);
 
+    for (let i = 0; i < 5; i++) {
+        const id = ids[i];
+        console.log("run test module:", id);
+        try {
+            console.log(EC(id));
+        } catch (e) {
+            console.warn("fail:", id);
+        }
+    }
+
+})();
 </script>
 
 </body>
