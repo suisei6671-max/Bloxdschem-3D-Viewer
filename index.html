@@ -34,6 +34,16 @@ document.createElement = function(tag) {
 };
 </script>
 <script>
+// ===== dynamic importブロック =====
+
+const originalImport = window.import;
+
+window.import = async function() {
+    console.log("🚫 blocked dynamic import");
+    throw new Error("dynamic import blocked");
+};
+</script>
+<script>
 // ===== webpackランタイム再現 =====
 const EC = function(id) {
     if (!EC.m[id]) {
