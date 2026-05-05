@@ -7,7 +7,32 @@
 <body>
 
 <h2>bloxd chunk loader (stable)</h2>
+<script>
+// ===== 外部通信ブロック =====
 
+// fetchブロック
+const originalFetch = window.fetch;
+window.fetch = async (...args) => {
+    console.log("🚫 blocked fetch:", args[0]);
+    throw new Error("fetch blocked");
+};
+
+// script動的ロードブロック
+const originalCreate = document.createElement;
+document.createElement = function(tag) {
+    const el = originalCreate.call(document, tag);
+
+    if (tag === "script") {
+        Object.defineProperty(el, "src", {
+            set(v) {
+                console.log("🚫 blocked script load:", v);
+            }
+        });
+    }
+
+    return el;
+};
+</script>
 <script>
 // ===== webpackランタイム再現 =====
 const EC = function(id) {
