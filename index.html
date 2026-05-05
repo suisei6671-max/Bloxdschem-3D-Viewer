@@ -2,11 +2,11 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>bloxd loader full</title>
+<title>bloxd loader stable</title>
 </head>
 <body>
 
-<h2>bloxd chunk loader</h2>
+<h2>bloxd chunk loader (stable)</h2>
 
 <script>
 // ===== webpackランタイム再現 =====
@@ -32,7 +32,7 @@ const EC = function(id) {
 EC.m = {};
 EC.c = {};
 
-// --- webpack helper群 ---
+// ===== webpack helper =====
 EC.d = (exports, name, getter) => {
     if (!EC.o(exports, name)) {
         Object.defineProperty(exports, name, {
@@ -81,43 +81,44 @@ EC.t = (value, mode) => {
     return ns;
 };
 
-// chunk loader（簡易）
+// ===== 🔥 外部chunkロード完全ブロック =====
+EC.f = {};
+
 EC.e = async (chunkId) => {
-    console.log("load chunk", chunkId);
-    const mod = await import(`./bloxd_chunk${chunkId}.js`);
-    Object.assign(EC.m, mod.modules);
-    console.log("loaded chunk", chunkId);
+    console.log("🚫 blocked chunk load:", chunkId);
 };
 
-// 外部chunkロードを潰す
-EC.f = {};
-EC.e = async (chunkId) => {
-    console.log("blocked chunk load:", chunkId);
-};
 window.EC = EC;
 </script>
 
 <script type="module">
 (async () => {
 
-    // ===== chunkロード =====
-    await EC.e(4);
-    await EC.e(5);
+    console.log("=== manual chunk load start ===");
 
-    console.log("all modules:", Object.keys(EC.m));
+    // ===== 手動でchunk読み込み =====
+    const chunk4 = await import("./bloxd_chunk4.js");
+    const chunk5 = await import("./bloxd_chunk5.js");
+
+    Object.assign(EC.m, chunk4.modules);
+    Object.assign(EC.m, chunk5.modules);
+
+    console.log("✅ modules loaded:", Object.keys(EC.m).length);
 
     // ===== テスト実行 =====
     const ids = Object.keys(EC.m);
 
     for (let i = 0; i < 5; i++) {
         const id = ids[i];
-        console.log("run test module:", id);
+        console.log("▶ run module:", id);
         try {
             console.log(EC(id));
         } catch (e) {
             console.warn("fail:", id);
         }
     }
+
+    console.log("=== ready for analysis ===");
 
 })();
 </script>
