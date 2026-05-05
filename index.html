@@ -9,85 +9,48 @@
 <h2>bloxd chunk loader (stable)</h2>
 <script>
 // ===============================
-const EC = function(id) {
-    if (!EC.m[id]) {
-        console.warn("❌ missing:", id);
-        return {};
-    }
-
-    if (EC.c[id]) return EC.c[id].exports;
-
-    const module = { exports: {} };
-    EC.c[id] = module;
-
-    try {
-        EC.m[id].call(module.exports, module, module.exports, EC);
-    } catch (e) {
-        console.warn("⚠ error:", id, e);
-    }
-
-    return module.exports;
-};
-
-EC.m = {};
-EC.c = {};
+const EC = { m: {} };
 window.EC = EC;
 
 // ===============================
 async function loadChunk(path) {
+    console.log("📦 loading:", path);
+
     const text = await fetch(path).then(r => r.text());
 
-    const fixed = text
-        .replace(/export const id = .*?;/, "")
-        .replace(/export const ids = .*?;/, "")
-        .replace(/export const modules =/, "return");
+    // ===============================
+    // 🔥 modulesオブジェクトを“文字列として抽出”
+    // ===============================
+    const match = text.match(/modules\s*=\s*({[\s\S]*?})[,;\n]/);
 
-    const modules = new Function(fixed)();
+    if (!match) {
+        console.error("❌ modules not found");
+        return;
+    }
+
+    let modules;
+
+    try {
+        modules = eval("(" + match[1] + ")");
+    } catch (e) {
+        console.error("❌ eval failed:", e);
+        return;
+    }
 
     Object.assign(EC.m, modules);
 
-    console.log("loaded:", Object.keys(modules).length);
+    console.log("✅ loaded:", Object.keys(modules).length);
 }
 
 // ===============================
 (async () => {
 
-    console.log("=== LOAD ===");
+    console.log("=== SAFE LOAD ===");
 
     await loadChunk("./bloxd_chunk4.js");
     await loadChunk("./bloxd_chunk5.js");
 
-    // 👇 ここ重要（無いなら追加）
-    await loadChunk("./bloxd_chunk6.js");
-    await loadChunk("./bloxd_chunk7.js");
-
-    console.log("TOTAL:", Object.keys(EC.m).length);
-
-    // ===============================
-    // 🔍 blockMetadata確認
-    // ===============================
-    for (const [id, fn] of Object.entries(EC.m)) {
-        if (fn.toString().includes("blockMetadata")) {
-            console.log("🎯 block module:", id);
-
-            const mod = EC(id);
-            console.log(mod);
-        }
-    }
-
-    // ===============================
-    // 🔥 1911実行（あれば）
-    // ===============================
-    if (EC.m[1911]) {
-        console.log("🚀 RUN 1911");
-
-        const result = EC(1911);
-
-        console.log("RESULT:", result);
-        console.log("CACHE:", EC.c);
-    } else {
-        console.warn("1911 not loaded");
-    }
+    console.log("🎯 TOTAL:", Object.keys(EC.m).length);
 
 })();
 </script>
