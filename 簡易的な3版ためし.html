@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Proxy Loader</title>
+</head>
+<body>
+
+<h1>Bloxd Chunk Loader (Proxy)</h1>
+
+<script>
+// ===== webpackChunkフック =====
+window.capturedModules = {};
+
+self.webpackChunk = self.webpackChunk || [];
+const origPush = self.webpackChunk.push.bind(self.webpackChunk);
+
+self.webpackChunk.push = function(chunk) {
+    console.log("チャンク取得:", chunk);
+    Object.assign(window.capturedModules, chunk[1]);
+    return origPush(chunk);
+};
+
+// ===== プロキシ経由で取得 =====
+const url = "https://bloxd.io/static/js/b6al35.3.ded95fa6.chunk.js";
+
+// 公開プロキシ（使えない場合ある）
+const proxy = "https://cors-anywhere.herokuapp.com/";
+
+fetch(proxy + url)
+.then(res => res.text())
+.then(code => {
+
+    // 🔥 export削除（超重要）
+    code = code.replace(/export\s+/g, "");
+
+    // 実行
+    eval(code);
+
+    console.log("読み込み完了");
+
+})
+.catch(err => console.error(err));
+
+
+// ===== 後で確認 =====
+setTimeout(() => {
+    console.log("modules一覧:", Object.keys(window.capturedModules));
+}, 3000);
+</script>
+
+</body>
+</html>
