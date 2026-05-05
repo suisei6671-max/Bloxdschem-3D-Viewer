@@ -9,8 +9,6 @@
 <h2>bloxd chunk loader (stable)</h2>
 <script>
 // ===============================
-// webpackランタイム（観測付き）
-// ===============================
 const EC = function(id) {
     if (!EC.m[id]) {
         console.warn("❌ Module missing:", id);
@@ -22,15 +20,13 @@ const EC = function(id) {
     const module = { exports: {} };
     EC.c[id] = module;
 
-    console.log("▶ RUN module:", id);
+    console.log("▶ RUN:", id);
 
     try {
         EC.m[id].call(module.exports, module, module.exports, EC);
     } catch (e) {
-        console.warn("⚠ module error:", id, e);
+        console.warn("⚠ error:", id, e);
     }
-
-    console.log("✔ DONE module:", id);
 
     return module.exports;
 };
@@ -38,18 +34,8 @@ const EC = function(id) {
 EC.m = {};
 EC.c = {};
 
-EC.d = (exports, name, getter) => {
-    Object.defineProperty(exports, name, { enumerable: true, get: getter });
-};
-
-EC.r = (exports) => {
-    Object.defineProperty(exports, "__esModule", { value: true });
-};
-
 window.EC = EC;
 
-// ===============================
-// modules抽出
 // ===============================
 async function loadChunk(path) {
     console.log("📦 loading:", path);
@@ -61,14 +47,7 @@ async function loadChunk(path) {
         .replace(/export const ids = .*?;/, "")
         .replace(/export const modules =/, "return");
 
-    let modules;
-
-    try {
-        modules = new Function(fixed)();
-    } catch (e) {
-        console.error("❌ parse failed:", e);
-        return;
-    }
+    const modules = new Function(fixed)();
 
     Object.assign(EC.m, modules);
 
@@ -76,32 +55,37 @@ async function loadChunk(path) {
 }
 
 // ===============================
-// 実行フェーズ
-// ===============================
 (async () => {
 
-    console.log("=== START ===");
+    console.log("=== LOAD ALL ===");
 
     await loadChunk("./bloxd_chunk4.js");
     await loadChunk("./bloxd_chunk5.js");
 
+    // 🔥 ここ追加
+    await loadChunk("./bloxd_chunk6.js");
+    await loadChunk("./bloxd_chunk7.js");
+
     console.log("🎯 TOTAL:", Object.keys(EC.m).length);
 
     // ===============================
-    // 本命（あなたが見つけたやつ）
+    // 1911があるか確認
     // ===============================
-    const target = 1911;
-
-    console.log("🔥 EXECUTE TARGET:", target);
-
-    const result = EC(target);
-
-    console.log("📦 RESULT:", result);
+    console.log("has 1911:", !!EC.m[1911]);
 
     // ===============================
-    // キャッシュ観測（超重要）
+    // 実行
     // ===============================
-    console.log("🧠 CACHE KEYS:", Object.keys(EC.c));
+    if (EC.m[1911]) {
+        console.log("🔥 EXECUTE 1911");
+
+        const result = EC(1911);
+
+        console.log("📦 RESULT:", result);
+        console.log("🧠 CACHE:", Object.keys(EC.c));
+    } else {
+        console.warn("❌ 1911 still missing");
+    }
 
 })();
 </script>
