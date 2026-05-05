@@ -9,136 +9,77 @@
 <h2>bloxd chunk loader (stable)</h2>
 <script>
 // ===============================
-// 外部通信ブロック（止めるけど壊さない）
+// 最小webpack風コンテナ
 // ===============================
-
-// fetchを「成功っぽく返す」
-window.fetch = async (...args) => {
-    console.log("🚫 blocked fetch:", args[0]);
-
-    return new Response("{}", {
-        status: 200,
-        headers: { "Content-Type": "application/json" }
-    });
-};
-
-// scriptタグの外部読み込みを無効化（でもエラーにしない）
-const originalCreate = document.createElement;
-document.createElement = function(tag) {
-    const el = originalCreate.call(document, tag);
-
-    if (tag === "script") {
-        Object.defineProperty(el, "src", {
-            set(v) {
-                console.log("🚫 blocked script load:", v);
-            }
-        });
-    }
-
-    return el;
-};
-
-// ===============================
-// webpackランタイム再現
-// ===============================
-
-const EC = function(id) {
-    if (!EC.m[id]) {
-        console.warn("Module missing:", id);
-        return {};
-    }
-    if (EC.c[id]) return EC.c[id].exports;
-
-    const module = { exports: {} };
-    EC.c[id] = module;
-
-    try {
-        EC.m[id].call(module.exports, module, module.exports, EC);
-    } catch (e) {
-        console.warn("Module error:", id, e);
-    }
-
-    return module.exports;
-};
-
-EC.m = {};
-EC.c = {};
-
-// helper
-EC.d = (exports, name, getter) => {
-    if (!EC.o(exports, name)) {
-        Object.defineProperty(exports, name, {
-            enumerable: true,
-            get: getter
-        });
-    }
-};
-
-EC.r = (exports) => {
-    if (typeof Symbol !== "undefined" && Symbol.toStringTag) {
-        Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
-    }
-    Object.defineProperty(exports, "__esModule", { value: true });
-};
-
-EC.o = (obj, prop) => Object.prototype.hasOwnProperty.call(obj, prop);
-
-EC.n = (module) => {
-    const getter = module && module.__esModule
-        ? () => module.default
-        : () => module;
-    EC.d(getter, "a", getter);
-    return getter;
-};
-
-EC.t = (value, mode) => {
-    if (mode & 1) value = EC(value);
-    if (mode & 8) return value;
-    if ((mode & 4) && typeof value === "object" && value && value.__esModule) return value;
-
-    const ns = Object.create(null);
-    EC.r(ns);
-
-    Object.defineProperty(ns, "default", {
-        enumerable: true,
-        value: value
-    });
-
-    if (mode & 2 && typeof value != "string") {
-        for (let key in value) {
-            EC.d(ns, key, ((k) => value[k]).bind(null, key));
-        }
-    }
-
-    return ns;
-};
-
-// 🔥 chunkロードは無効（手動でやる）
-EC.e = async () => {
-    console.log("🚫 blocked dynamic chunk load");
+const EC = {
+    m: {}, // modules
+    c: {}  // cache（今回は未使用）
 };
 
 window.EC = EC;
 
 // ===============================
-// 手動でchunk読み込み
+// chunkからmodulesだけ抽出
+// ===============================
+async function loadChunk(path) {
+    console.log("📦 loading:", path);
+
+    const text = await fetch(path).then(r => r.text());
+
+    // ===== exportを削除して「return modules」に変換 =====
+    const fixed = text
+        .replace(/export const id = .*?;/, "")
+        .replace(/export const ids = .*?;/, "")
+        .replace(/export const modules =/, "return");
+
+    let modules;
+
+    try {
+        modules = new Function(fixed)();
+    } catch (e) {
+        console.error("❌ parse failed:", path, e);
+        return;
+    }
+
+    Object.assign(EC.m, modules);
+
+    console.log("✅ loaded modules:", Object.keys(modules).length);
+}
+
+// ===============================
+// メイン処理
 // ===============================
 (async () => {
 
-    console.log("=== manual chunk load start ===");
+    console.log("=== module extraction start ===");
 
-    try {
-        const chunk4 = await import("./bloxd_chunk4.js");
-        const chunk5 = await import("./bloxd_chunk5.js");
+    // 必要なchunkを読み込む
+    await loadChunk("./bloxd_chunk4.js");
+    await loadChunk("./bloxd_chunk5.js");
 
-        Object.assign(EC.m, chunk4.modules);
-        Object.assign(EC.m, chunk5.modules);
+    const total = Object.keys(EC.m).length;
 
-        console.log("✅ modules loaded:", Object.keys(EC.m).length);
+    console.log("🎯 TOTAL MODULES:", total);
 
-    } catch (e) {
-        console.error("❌ chunk load failed:", e);
+    // ===============================
+    // 確認用
+    // ===============================
+    if (total === 0) {
+        console.warn("⚠ modulesが0 → chunk読み込み失敗");
+        return;
     }
+
+    // ===============================
+    // デバッグ：最初の5個見る
+    // ===============================
+    const ids = Object.keys(EC.m).slice(0, 5);
+
+    for (const id of ids) {
+        console.log("▶ module:", id);
+        console.log(EC.m[id].toString().slice(0, 200));
+    }
+
+    console.log("=== ready for analysis ===");
 
 })();
 </script>
