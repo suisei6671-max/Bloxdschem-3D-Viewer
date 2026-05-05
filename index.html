@@ -8,16 +8,21 @@
 
 <h2>bloxd chunk loader (stable)</h2>
 <script>
-// ===== 外部通信ブロック =====
+// ===============================
+// 外部通信ブロック（止めるけど壊さない）
+// ===============================
 
-// fetchブロック
-const originalFetch = window.fetch;
+// fetchを「成功っぽく返す」
 window.fetch = async (...args) => {
     console.log("🚫 blocked fetch:", args[0]);
-    throw new Error("fetch blocked");
+
+    return new Response("{}", {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+    });
 };
 
-// script動的ロードブロック
+// scriptタグの外部読み込みを無効化（でもエラーにしない）
 const originalCreate = document.createElement;
 document.createElement = function(tag) {
     const el = originalCreate.call(document, tag);
@@ -32,19 +37,11 @@ document.createElement = function(tag) {
 
     return el;
 };
-</script>
-<script>
-// ===== dynamic importブロック =====
 
-const originalImport = window.import;
+// ===============================
+// webpackランタイム再現
+// ===============================
 
-window.import = async function() {
-    console.log("🚫 blocked dynamic import");
-    throw new Error("dynamic import blocked");
-};
-</script>
-<script>
-// ===== webpackランタイム再現 =====
 const EC = function(id) {
     if (!EC.m[id]) {
         console.warn("Module missing:", id);
@@ -58,7 +55,7 @@ const EC = function(id) {
     try {
         EC.m[id].call(module.exports, module, module.exports, EC);
     } catch (e) {
-        console.error("Error in module:", id, e);
+        console.warn("Module error:", id, e);
     }
 
     return module.exports;
@@ -67,7 +64,7 @@ const EC = function(id) {
 EC.m = {};
 EC.c = {};
 
-// ===== webpack helper =====
+// helper
 EC.d = (exports, name, getter) => {
     if (!EC.o(exports, name)) {
         Object.defineProperty(exports, name, {
@@ -116,44 +113,32 @@ EC.t = (value, mode) => {
     return ns;
 };
 
-// ===== 🔥 外部chunkロード完全ブロック =====
-EC.f = {};
-
-EC.e = async (chunkId) => {
-    console.log("🚫 blocked chunk load:", chunkId);
+// 🔥 chunkロードは無効（手動でやる）
+EC.e = async () => {
+    console.log("🚫 blocked dynamic chunk load");
 };
 
 window.EC = EC;
-</script>
 
-<script type="module">
+// ===============================
+// 手動でchunk読み込み
+// ===============================
 (async () => {
 
     console.log("=== manual chunk load start ===");
 
-    // ===== 手動でchunk読み込み =====
-    const chunk4 = await import("./bloxd_chunk4.js");
-    const chunk5 = await import("./bloxd_chunk5.js");
+    try {
+        const chunk4 = await import("./bloxd_chunk4.js");
+        const chunk5 = await import("./bloxd_chunk5.js");
 
-    Object.assign(EC.m, chunk4.modules);
-    Object.assign(EC.m, chunk5.modules);
+        Object.assign(EC.m, chunk4.modules);
+        Object.assign(EC.m, chunk5.modules);
 
-    console.log("✅ modules loaded:", Object.keys(EC.m).length);
+        console.log("✅ modules loaded:", Object.keys(EC.m).length);
 
-    // ===== テスト実行 =====
-    const ids = Object.keys(EC.m);
-
-    for (let i = 0; i < 5; i++) {
-        const id = ids[i];
-        console.log("▶ run module:", id);
-        try {
-            console.log(EC(id));
-        } catch (e) {
-            console.warn("fail:", id);
-        }
+    } catch (e) {
+        console.error("❌ chunk load failed:", e);
     }
-
-    console.log("=== ready for analysis ===");
 
 })();
 </script>
