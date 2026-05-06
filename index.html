@@ -79,5 +79,33 @@ const targets = Object.entries(EC.m).filter(([id, fn]) =>
 
 console.log("🎯 blockMetadata候補:", targets.map(([id]) => id));
 </script>
+<script>
+// ===============================
+function runModule(id) {
+    const module = { exports: {} };
+
+    try {
+        EC.m[id](module, module.exports, {
+            d: (obj, defs) => {
+                for (const key in defs) {
+                    Object.defineProperty(obj, key, {
+                        enumerable: true,
+                        get: defs[key]
+                    });
+                }
+            },
+            r: (obj) => {
+                Object.defineProperty(obj, "__esModule", { value: true });
+            }
+        });
+
+        return module.exports;
+
+    } catch (e) {
+        console.error("❌ 実行エラー:", e);
+        return null;
+    }
+}
+</script>
 </body>
 </html>
