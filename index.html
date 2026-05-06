@@ -7,47 +7,18 @@
 <body>
 
 <h2>bloxd chunk loader (stable)</h2>
-<script>
+<script type="module">
 (async () => {
-  console.log("=== TEST QC FUNCTION ===");
+  console.log("=== ESM LOAD ===");
 
-  const res = await fetch("./bloxd_chunk5.js");
-  const text = await res.text();
-
-  const data = new Function("return " + text)();
-
-  const modules = data.modules;
-
-  // 簡易require
-  const cache = {};
-  function require(id) {
-    if (cache[id]) return cache[id].exports;
-    if (!modules[id]) {
-      console.warn("❌ missing:", id);
-      return {};
-    }
-    const module = { exports: {} };
-    cache[id] = module;
-    modules[id](module, module.exports, require);
-    return module.exports;
-  }
-
-  // 1929読み込み
-  const mod = require(1929);
+  // ESMとして読み込む
+  const mod = await import("./bloxd_chunk5.js");
 
   console.log("📦 module:", mod);
 
-  // QC関数取得
-  const QC = mod.W;
-
-  console.log("🎯 QC:", QC);
-
-  // ダミー引数で実行
-  try {
-    const result = QC("Stone", { rootMetaDesc: "meta|rot1|bot" });
-    console.log("🧪 QC result:", result);
-  } catch (e) {
-    console.error("❌ QC error:", e);
+  // 1929が直接見える場合もある
+  if (mod.default) {
+    console.log("default:", mod.default);
   }
 
 })();
