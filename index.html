@@ -18,9 +18,6 @@ async function loadChunk(path) {
 
     const text = await fetch(path).then(r => r.text());
 
-    // ===============================
-    // 🔥 modulesブロックを手動で切り出す
-    // ===============================
     const start = text.indexOf("export const modules");
     if (start === -1) {
         console.error("❌ modules not found");
@@ -43,9 +40,10 @@ async function loadChunk(path) {
 
     const objText = text.slice(braceStart, end + 1);
 
-    // ===============================
-    // 🔥 Functionとして安全に生成（実行なし）
-    // ===============================
+    // 🔍 ここで確認
+    console.log("🧪 objText preview:");
+    console.log(objText.slice(0, 200));
+
     let modules;
     try {
         modules = new Function("return " + objText)();
@@ -62,7 +60,7 @@ async function loadChunk(path) {
 // ===============================
 (async () => {
 
-    console.log("=== SAFE LOAD v2 ===");
+    console.log("=== SAFE LOAD v3 ===");
 
     await loadChunk("./bloxd_chunk4.js");
     await loadChunk("./bloxd_chunk5.js");
