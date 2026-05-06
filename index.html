@@ -19,21 +19,38 @@ async function loadChunk(path) {
     const text = await fetch(path).then(r => r.text());
 
     // ===============================
-    // 🔥 modulesオブジェクトを“文字列として抽出”
+    // 🔥 modulesブロックを手動で切り出す
     // ===============================
-    const match = text.match(/modules\s*=\s*({[\s\S]*?})[,;\n]/);
-
-    if (!match) {
+    const start = text.indexOf("export const modules");
+    if (start === -1) {
         console.error("❌ modules not found");
         return;
     }
 
-    let modules;
+    const braceStart = text.indexOf("{", start);
+    let depth = 0;
+    let end = braceStart;
 
+    for (let i = braceStart; i < text.length; i++) {
+        if (text[i] === "{") depth++;
+        if (text[i] === "}") depth--;
+
+        if (depth === 0) {
+            end = i;
+            break;
+        }
+    }
+
+    const objText = text.slice(braceStart, end + 1);
+
+    // ===============================
+    // 🔥 Functionとして安全に生成（実行なし）
+    // ===============================
+    let modules;
     try {
-        modules = eval("(" + match[1] + ")");
+        modules = new Function("return " + objText)();
     } catch (e) {
-        console.error("❌ eval failed:", e);
+        console.error("❌ parse failed:", e);
         return;
     }
 
@@ -45,7 +62,7 @@ async function loadChunk(path) {
 // ===============================
 (async () => {
 
-    console.log("=== SAFE LOAD ===");
+    console.log("=== SAFE LOAD v2 ===");
 
     await loadChunk("./bloxd_chunk4.js");
     await loadChunk("./bloxd_chunk5.js");
