@@ -59,11 +59,13 @@
 
 })();
 </script>
-<script>
-await import("./bloxd_chunk4.js");
-await import("./bloxd_chunk6.js");
-await import("./bloxd_chunk7.js");
+<script type="module">
+(async () => {
+  await import("./bloxd_chunk4.js");
+  await import("./bloxd_chunk5.js");
 
+  console.log("✅ chunks loaded");
+})();
 </script>
 </body>
 </html>
