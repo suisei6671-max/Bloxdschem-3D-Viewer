@@ -31,52 +31,8 @@ const EC = function(id) {
 
 EC.m = {};
 EC.c = {};
-
 window.EC = EC;
 
-// ===============================
-async function loadChunk(path) {
-    console.log("📦 loading:", path);
-
-    const text = await fetch(path).then(r => r.text());
-
-    const start = text.indexOf("export const modules");
-    if (start === -1) {
-        console.error("❌ modules not found");
-        return;
-    }
-
-    const braceStart = text.indexOf("{", start);
-    let depth = 0;
-    let end = braceStart;
-
-    for (let i = braceStart; i < text.length; i++) {
-        if (text[i] === "{") depth++;
-        if (text[i] === "}") depth--;
-
-        if (depth === 0) {
-            end = i;
-            break;
-        }
-    }
-
-    const objText = text.slice(braceStart, end + 1);
-
-    let modules;
-    try {
-        modules = new Function("return " + objText)();
-    } catch (e) {
-        console.error("❌ parse failed:", e);
-        return;
-    }
-
-    Object.assign(EC.m, modules);
-
-    console.log("✅ loaded:", Object.keys(modules).length);
-}
-
-// ===============================
-// webpack補助
 // ===============================
 EC.d = (obj, defs) => {
     for (const key in defs) {
@@ -94,51 +50,69 @@ EC.r = (obj) => {
 EC.o = (obj, prop) => Object.prototype.hasOwnProperty.call(obj, prop);
 
 // ===============================
+async function loadChunk(path) {
+    console.log("📦 loading:", path);
+
+    const text = await fetch(path).then(r => r.text());
+
+    const start = text.indexOf("export const modules");
+    const braceStart = text.indexOf("{", start);
+
+    let depth = 0;
+    let end = braceStart;
+
+    for (let i = braceStart; i < text.length; i++) {
+        if (text[i] === "{") depth++;
+        if (text[i] === "}") depth--;
+        if (depth === 0) {
+            end = i;
+            break;
+        }
+    }
+
+    const objText = text.slice(braceStart, end + 1);
+    const modules = new Function("return " + objText)();
+
+    Object.assign(EC.m, modules);
+
+    console.log("✅ loaded:", Object.keys(modules).length);
+}
+
+// ===============================
 (async () => {
 
-    console.log("=== START v2 ===");
+    console.log("=== START EXEC PHASE ===");
 
     await loadChunk("./bloxd_chunk4.js");
     await loadChunk("./bloxd_chunk5.js");
 
     console.log("🎯 TOTAL:", Object.keys(EC.m).length);
 
-    // ===============================
-    // 🔥 1929 実行（今度は成功する）
-    // ===============================
     const mod = EC(1929);
 
     console.log("📦 module 1929:", mod);
 
     // ===============================
-    // 🔍 中身展開
+    // 🔥 ここが本番
     // ===============================
-    const results = {};
 
-    Object.keys(mod || {}).forEach(k => {
-        try {
-            const v = mod[k];
-            console.log("🔍", k, v);
+    try {
+        const fn = mod.W; // ← QC
 
-            if (
-                v &&
-                typeof v === "object" &&
-                (
-                    "textureInfo" in v ||
-                    "animTextures" in v ||
-                    Object.keys(v).length > 50
-                )
-            ) {
-                console.log("🔥 FOUND BLOCK:", k);
-                results[k] = v;
-            }
+        console.log("🎯 実行対象:", fn);
 
-        } catch (e) {
-            console.log("⚠", k, "error");
-        }
-    });
+        // ダミー引数（重要）
+        const fakeBlock = {
+            rootMetaDesc: "meta|rot1|bot"
+        };
 
-    console.log("🎯 BLOCK候補:", results);
+        const result = fn("test_block", fakeBlock);
+
+        console.log("🔥 RESULT:", result);
+
+    } catch (e) {
+        console.error("❌ 実行失敗:", e);
+    }
 
 })();
 </script>
