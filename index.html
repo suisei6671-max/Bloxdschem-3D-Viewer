@@ -9,17 +9,22 @@
 <h2>bloxd chunk loader (stable)</h2>
 <script type="module">
 (async () => {
-  console.log("=== ESM + REQUIRE ===");
+  console.log("=== FINAL FIX ===");
 
-  const chunk = await import("./bloxd_chunk5.js");
+  const chunk4 = await import("./bloxd_chunk4.js");
+  const chunk5 = await import("./bloxd_chunk5.js");
 
-  const modules = chunk.modules;
+  const modules = {
+    ...chunk4.modules,
+    ...chunk5.modules
+  };
+
   console.log("🎯 modules:", Object.keys(modules).length);
 
-  // 🔥 require再現
   const cache = {};
 
-  function require(id) {
+  // 🔥 require本体
+  function __webpack_require__(id) {
     if (cache[id]) return cache[id].exports;
 
     if (!modules[id]) {
@@ -30,13 +35,36 @@
     const module = { exports: {} };
     cache[id] = module;
 
-    modules[id](module, module.exports, require);
+    modules[id](module, module.exports, __webpack_require__);
 
     return module.exports;
   }
 
-  // 🔥 1929 実行
-  const mod1929 = require(1929);
+  // 🔥 先に全部定義する（ここ重要）
+  Object.assign(__webpack_require__, {
+    d: (exports, definition) => {
+      for (const key in definition) {
+        Object.defineProperty(exports, key, {
+          enumerable: true,
+          get: definition[key]
+        });
+      }
+    },
+
+    r: (exports) => {
+      Object.defineProperty(exports, "__esModule", { value: true });
+    },
+
+    n: (module) => {
+      const getter = module && module.__esModule
+        ? () => module.default
+        : () => module;
+      return getter;
+    }
+  });
+
+  // 🚀 実行
+  const mod1929 = __webpack_require__(1929);
 
   console.log("📦 1929:", mod1929);
   console.log("🔑 keys:", Object.keys(mod1929));
