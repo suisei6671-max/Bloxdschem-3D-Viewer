@@ -9,7 +9,29 @@
 <h2>bloxd chunk loader (stable)</h2>
 <script>
 // ===============================
-const EC = { m: {} };
+const EC = function(id) {
+    if (!EC.m[id]) {
+        console.warn("❌ missing module:", id);
+        return {};
+    }
+
+    if (EC.c[id]) return EC.c[id].exports;
+
+    const module = { exports: {} };
+    EC.c[id] = module;
+
+    try {
+        EC.m[id](module, module.exports, EC);
+    } catch (e) {
+        console.warn("⚠ 実行エラー:", id, e);
+    }
+
+    return module.exports;
+};
+
+EC.m = {};
+EC.c = {};
+
 window.EC = EC;
 
 // ===============================
@@ -54,41 +76,27 @@ async function loadChunk(path) {
 }
 
 // ===============================
-function runModule(id) {
-    if (typeof EC.m[id] !== "function") {
-        console.warn("❌ not function:", id);
-        return null;
+// webpack補助
+// ===============================
+EC.d = (obj, defs) => {
+    for (const key in defs) {
+        Object.defineProperty(obj, key, {
+            enumerable: true,
+            get: defs[key]
+        });
     }
+};
 
-    const module = { exports: {} };
+EC.r = (obj) => {
+    Object.defineProperty(obj, "__esModule", { value: true });
+};
 
-    const fakeEC = {
-        d: (obj, defs) => {
-            for (const key in defs) {
-                Object.defineProperty(obj, key, {
-                    enumerable: true,
-                    get: defs[key]
-                });
-            }
-        },
-        r: (obj) => {
-            Object.defineProperty(obj, "__esModule", { value: true });
-        }
-    };
-
-    try {
-        EC.m[id](module, module.exports, fakeEC);
-        return module.exports;
-    } catch (e) {
-        console.warn("⚠ 実行エラー:", id, e);
-        return null;
-    }
-}
+EC.o = (obj, prop) => Object.prototype.hasOwnProperty.call(obj, prop);
 
 // ===============================
 (async () => {
 
-    console.log("=== START ===");
+    console.log("=== START v2 ===");
 
     await loadChunk("./bloxd_chunk4.js");
     await loadChunk("./bloxd_chunk5.js");
@@ -96,28 +104,22 @@ function runModule(id) {
     console.log("🎯 TOTAL:", Object.keys(EC.m).length);
 
     // ===============================
-    // 🔥 1929 実行
+    // 🔥 1929 実行（今度は成功する）
     // ===============================
-    const mod = runModule(1929);
+    const mod = EC(1929);
 
     console.log("📦 module 1929:", mod);
-
-    if (!mod) {
-        console.error("❌ 1929 failed");
-        return;
-    }
 
     // ===============================
     // 🔍 中身展開
     // ===============================
     const results = {};
 
-    Object.keys(mod).forEach(k => {
+    Object.keys(mod || {}).forEach(k => {
         try {
             const v = mod[k];
             console.log("🔍", k, v);
 
-            // 👇 blockっぽい特徴検出
             if (
                 v &&
                 typeof v === "object" &&
@@ -127,7 +129,7 @@ function runModule(id) {
                     Object.keys(v).length > 50
                 )
             ) {
-                console.log("🔥 FOUND BLOCK CANDIDATE:", k);
+                console.log("🔥 FOUND BLOCK:", k);
                 results[k] = v;
             }
 
@@ -136,7 +138,7 @@ function runModule(id) {
         }
     });
 
-    console.log("🎯 BLOCK候補まとめ:", results);
+    console.log("🎯 BLOCK候補:", results);
 
 })();
 </script>
