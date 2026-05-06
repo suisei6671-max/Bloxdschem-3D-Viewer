@@ -40,10 +40,6 @@ async function loadChunk(path) {
 
     const objText = text.slice(braceStart, end + 1);
 
-    // 🔍 ここで確認
-    console.log("🧪 objText preview:");
-    console.log(objText.slice(0, 200));
-
     let modules;
     try {
         modules = new Function("return " + objText)();
@@ -58,58 +54,91 @@ async function loadChunk(path) {
 }
 
 // ===============================
+function runModule(id) {
+    if (typeof EC.m[id] !== "function") {
+        console.warn("❌ not function:", id);
+        return null;
+    }
+
+    const module = { exports: {} };
+
+    const fakeEC = {
+        d: (obj, defs) => {
+            for (const key in defs) {
+                Object.defineProperty(obj, key, {
+                    enumerable: true,
+                    get: defs[key]
+                });
+            }
+        },
+        r: (obj) => {
+            Object.defineProperty(obj, "__esModule", { value: true });
+        }
+    };
+
+    try {
+        EC.m[id](module, module.exports, fakeEC);
+        return module.exports;
+    } catch (e) {
+        console.warn("⚠ 実行エラー:", id, e);
+        return null;
+    }
+}
+
+// ===============================
 (async () => {
 
-    console.log("=== SAFE LOAD v3 ===");
+    console.log("=== START ===");
 
     await loadChunk("./bloxd_chunk4.js");
     await loadChunk("./bloxd_chunk5.js");
 
     console.log("🎯 TOTAL:", Object.keys(EC.m).length);
 
-})();
-</script>
-    <script>
-// ===============================
-// 🔍 blockMetadata探す
-// ===============================
-const targets = Object.entries(EC.m).filter(([id, fn]) =>
-    fn.toString().includes("blockMetadata")
-);
+    // ===============================
+    // 🔥 1929 実行
+    // ===============================
+    const mod = runModule(1929);
 
-console.log("🎯 blockMetadata候補:", targets.map(([id]) => id));
-</script>
-<script>
-// ===============================
-function runModule(id) {
-    const module = { exports: {} };
+    console.log("📦 module 1929:", mod);
 
-    try {
-        EC.m[id](module, module.exports, {
-            d: (obj, defs) => {
-                for (const key in defs) {
-                    Object.defineProperty(obj, key, {
-                        enumerable: true,
-                        get: defs[key]
-                    });
-                }
-            },
-            r: (obj) => {
-                Object.defineProperty(obj, "__esModule", { value: true });
-            }
-        });
-
-        return module.exports;
-
-    } catch (e) {
-        console.error("❌ 実行エラー:", e);
-        return null;
+    if (!mod) {
+        console.error("❌ 1929 failed");
+        return;
     }
-}
-</script>
-    <script>
-const mod = runModule(1917);
-console.log("📦 module:", mod);
+
+    // ===============================
+    // 🔍 中身展開
+    // ===============================
+    const results = {};
+
+    Object.keys(mod).forEach(k => {
+        try {
+            const v = mod[k];
+            console.log("🔍", k, v);
+
+            // 👇 blockっぽい特徴検出
+            if (
+                v &&
+                typeof v === "object" &&
+                (
+                    "textureInfo" in v ||
+                    "animTextures" in v ||
+                    Object.keys(v).length > 50
+                )
+            ) {
+                console.log("🔥 FOUND BLOCK CANDIDATE:", k);
+                results[k] = v;
+            }
+
+        } catch (e) {
+            console.log("⚠", k, "error");
+        }
+    });
+
+    console.log("🎯 BLOCK候補まとめ:", results);
+
+})();
 </script>
 </body>
 </html>
