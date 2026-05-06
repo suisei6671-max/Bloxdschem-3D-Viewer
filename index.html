@@ -55,8 +55,14 @@ async function loadChunk(path) {
 
     const text = await fetch(path).then(r => r.text());
 
-    const start = text.indexOf("export const modules");
-    const braceStart = text.indexOf("{", start);
+    // 🔥 修正ポイント
+    const assignIndex = text.indexOf("modules =");
+    if (assignIndex === -1) {
+        console.error("❌ modules= not found");
+        return;
+    }
+
+    const braceStart = text.indexOf("{", assignIndex);
 
     let depth = 0;
     let end = braceStart;
@@ -64,6 +70,7 @@ async function loadChunk(path) {
     for (let i = braceStart; i < text.length; i++) {
         if (text[i] === "{") depth++;
         if (text[i] === "}") depth--;
+
         if (depth === 0) {
             end = i;
             break;
@@ -71,7 +78,16 @@ async function loadChunk(path) {
     }
 
     const objText = text.slice(braceStart, end + 1);
-    const modules = new Function("return " + objText)();
+
+    console.log("🧪 preview:", objText.slice(0, 200));
+
+    let modules;
+    try {
+        modules = new Function("return " + objText)();
+    } catch (e) {
+        console.error("❌ parse failed:", e);
+        return;
+    }
 
     Object.assign(EC.m, modules);
 
@@ -81,7 +97,7 @@ async function loadChunk(path) {
 // ===============================
 (async () => {
 
-    console.log("=== START EXEC PHASE ===");
+    console.log("=== RETRY ===");
 
     await loadChunk("./bloxd_chunk4.js");
     await loadChunk("./bloxd_chunk5.js");
@@ -91,28 +107,6 @@ async function loadChunk(path) {
     const mod = EC(1929);
 
     console.log("📦 module 1929:", mod);
-
-    // ===============================
-    // 🔥 ここが本番
-    // ===============================
-
-    try {
-        const fn = mod.W; // ← QC
-
-        console.log("🎯 実行対象:", fn);
-
-        // ダミー引数（重要）
-        const fakeBlock = {
-            rootMetaDesc: "meta|rot1|bot"
-        };
-
-        const result = fn("test_block", fakeBlock);
-
-        console.log("🔥 RESULT:", result);
-
-    } catch (e) {
-        console.error("❌ 実行失敗:", e);
-    }
 
 })();
 </script>
