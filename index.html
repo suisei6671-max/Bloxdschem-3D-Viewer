@@ -10,11 +10,28 @@
 <script>
 (async () => {
   const mod = await import("./bloxd_chunk5.js");
-
-  console.log("🔥 raw module:", mod);
-
   const modules = mod.modules;
-  console.log("📦 modules:", modules);
+
+  const cache = {};
+
+  function require(id) {
+    if (cache[id]) return cache[id].exports;
+
+    if (!modules[id]) {
+      console.warn("❌ missing:", id);
+      return {};
+    }
+
+    const module = { exports: {} };
+    cache[id] = module;
+
+    modules[id](module, module.exports, require);
+
+    return module.exports;
+  }
+
+  const m1929 = require(1929);
+  console.log("🎯 1929:", m1929);
 })();
 </script>
 </body>
