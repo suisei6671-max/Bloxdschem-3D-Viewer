@@ -9,37 +9,23 @@
 <h2>bloxd chunk loader (stable)</h2>
 <script type="module">
 
-// ===============================
-// 🔥 chunk読み込み（ESMとして）
-// ===============================
 async function loadChunk(path) {
     console.log("📦 loading:", path);
-
     const mod = await import(path);
-
-    console.log("✅ keys:", Object.keys(mod));
-
-    return mod;
+    return mod.modules;
 }
 
-// ===============================
 (async () => {
 
-    console.log("=== ESM MODE ===");
+    console.log("=== FULL WEBPACK EMULATION ===");
 
-    const chunk5 = await loadChunk("./bloxd_chunk5.js");
-
-    // 👇 ここが本体
-    const modules = chunk5.modules;
+    const modules = await loadChunk("./bloxd_chunk5.js");
 
     console.log("🎯 modules:", Object.keys(modules).length);
 
-    // ===============================
-    // require再現
-    // ===============================
     const cache = {};
 
-    function require(id) {
+    function EC(id) {
         if (!modules[id]) {
             console.warn("❌ missing:", id);
             return {};
@@ -50,15 +36,37 @@ async function loadChunk(path) {
         const module = { exports: {} };
         cache[id] = module;
 
-        modules[id](module, module.exports, require);
+        modules[id](module, module.exports, EC);
 
         return module.exports;
     }
 
     // ===============================
-    // 🎯 実行
+    // 🔥 ここが超重要（不足してたやつ）
     // ===============================
-    const mod1929 = require(1929);
+
+    EC.d = function(exports, definition) {
+        for (const key in definition) {
+            if (!EC.o(exports, key)) {
+                Object.defineProperty(exports, key, {
+                    enumerable: true,
+                    get: definition[key]
+                });
+            }
+        }
+    };
+
+    EC.o = function(obj, prop) {
+        return Object.prototype.hasOwnProperty.call(obj, prop);
+    };
+
+    EC.r = function(exports) {
+        Object.defineProperty(exports, '__esModule', { value: true });
+    };
+
+    // ===============================
+
+    const mod1929 = EC(1929);
 
     console.log("📦 1929:", mod1929);
 
