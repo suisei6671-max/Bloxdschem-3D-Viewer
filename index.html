@@ -9,13 +9,13 @@
 <h2>bloxd chunk loader (stable)</h2>
 <script>
 // ===============================
-// webpackフック
+// 🔥 正しいchunk配列をフック
 // ===============================
-window.webpackChunk = window.webpackChunk || [];
+window.webpackChunkbloxd = window.webpackChunkbloxd || [];
 
-const realPush = window.webpackChunk.push.bind(window.webpackChunk);
+const realPush = window.webpackChunkbloxd.push.bind(window.webpackChunkbloxd);
 
-window.webpackChunk.push = function(data) {
+window.webpackChunkbloxd.push = function(data) {
     console.log("📦 chunk pushed:", data);
 
     const modules = data[1];
@@ -58,7 +58,7 @@ EC.missing = new Set();
 window.EC = EC;
 
 // ===============================
-// chunk読み込み（そのままscriptとして）
+// scriptロード
 // ===============================
 function loadScript(src) {
     return new Promise((resolve, reject) => {
@@ -73,19 +73,16 @@ function loadScript(src) {
 // ===============================
 (async () => {
 
-    console.log("=== WEBPACK MODE ===");
+    console.log("=== FIXED WEBPACK HOOK ===");
 
-    // 👇 ここ超重要（JSとして読み込む）
     await loadScript("./bloxd_chunk4.js");
     await loadScript("./bloxd_chunk5.js");
 
     console.log("🎯 TOTAL:", Object.keys(EC.m).length);
 
-    // 実行
     const mod = EC(1929);
 
     console.log("📦 1929:", mod);
-
     console.log("🔥 missing:", [...EC.missing]);
 
 })();
