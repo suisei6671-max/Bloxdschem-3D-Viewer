@@ -9,9 +9,30 @@
 <h2>bloxd chunk loader (stable)</h2>
 <script>
 // ===============================
+// webpackフック
+// ===============================
+window.webpackChunk = window.webpackChunk || [];
+
+const realPush = window.webpackChunk.push.bind(window.webpackChunk);
+
+window.webpackChunk.push = function(data) {
+    console.log("📦 chunk pushed:", data);
+
+    const modules = data[1];
+
+    Object.assign(EC.m, modules);
+
+    console.log("✅ modules追加:", Object.keys(modules).length);
+
+    return realPush(data);
+};
+
+// ===============================
+// require再現
+// ===============================
 const EC = function(id) {
     if (!EC.m[id]) {
-        console.warn("❌ missing module:", id);
+        console.warn("❌ missing:", id);
         EC.missing.add(id);
         return {};
     }
@@ -37,78 +58,33 @@ EC.missing = new Set();
 window.EC = EC;
 
 // ===============================
-EC.d = (obj, defs) => {
-    for (const key in defs) {
-        Object.defineProperty(obj, key, {
-            enumerable: true,
-            get: defs[key]
-        });
-    }
-};
-
-EC.r = (obj) => {
-    Object.defineProperty(obj, "__esModule", { value: true });
-};
-
-EC.o = (obj, prop) => Object.prototype.hasOwnProperty.call(obj, prop);
-
+// chunk読み込み（そのままscriptとして）
 // ===============================
-async function loadChunk(path) {
-    console.log("📦 loading:", path);
-
-    const text = await fetch(path).then(r => r.text());
-
-    // 🔥 modules の位置を正確に探す
-    const match = text.match(/modules\s*=\s*\{/);
-
-    if (!match) {
-        console.error("❌ modules not found");
-        return;
-    }
-
-    const braceStart = match.index + match[0].length - 1;
-
-    let depth = 0;
-    let end = braceStart;
-
-    for (let i = braceStart; i < text.length; i++) {
-        if (text[i] === "{") depth++;
-        if (text[i] === "}") depth--;
-
-        if (depth === 0) {
-            end = i;
-            break;
-        }
-    }
-
-    const objText = text.slice(braceStart, end + 1);
-
-    console.log("🧪 preview:", objText.slice(0, 120));
-
-    let modules;
-    try {
-        modules = new Function("return " + objText)();
-    } catch (e) {
-        console.error("❌ parse failed:", e);
-        return;
-    }
-
-    Object.assign(EC.m, modules);
-
-    console.log("✅ loaded:", Object.keys(modules).length);
+function loadScript(src) {
+    return new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = src;
+        s.onload = resolve;
+        s.onerror = reject;
+        document.body.appendChild(s);
+    });
 }
 
 // ===============================
 (async () => {
 
-    console.log("=== STABLE LOAD ===");
+    console.log("=== WEBPACK MODE ===");
 
-    await loadChunk("./bloxd_chunk4.js");
-    await loadChunk("./bloxd_chunk5.js");
+    // 👇 ここ超重要（JSとして読み込む）
+    await loadScript("./bloxd_chunk4.js");
+    await loadScript("./bloxd_chunk5.js");
 
     console.log("🎯 TOTAL:", Object.keys(EC.m).length);
 
-    EC(1929);
+    // 実行
+    const mod = EC(1929);
+
+    console.log("📦 1929:", mod);
 
     console.log("🔥 missing:", [...EC.missing]);
 
