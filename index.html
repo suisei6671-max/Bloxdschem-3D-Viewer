@@ -7,83 +7,60 @@
 <body>
 
 <h2>bloxd chunk loader (stable)</h2>
-<script>
-// ===============================
-// 🔥 正しいchunk配列をフック
-// ===============================
-window.webpackChunkbloxd = window.webpackChunkbloxd || [];
-
-const realPush = window.webpackChunkbloxd.push.bind(window.webpackChunkbloxd);
-
-window.webpackChunkbloxd.push = function(data) {
-    console.log("📦 chunk pushed:", data);
-
-    const modules = data[1];
-
-    Object.assign(EC.m, modules);
-
-    console.log("✅ modules追加:", Object.keys(modules).length);
-
-    return realPush(data);
-};
+<script type="module">
 
 // ===============================
-// require再現
+// 🔥 chunk読み込み（ESMとして）
 // ===============================
-const EC = function(id) {
-    if (!EC.m[id]) {
-        console.warn("❌ missing:", id);
-        EC.missing.add(id);
-        return {};
-    }
+async function loadChunk(path) {
+    console.log("📦 loading:", path);
 
-    if (EC.c[id]) return EC.c[id].exports;
+    const mod = await import(path);
 
-    const module = { exports: {} };
-    EC.c[id] = module;
+    console.log("✅ keys:", Object.keys(mod));
 
-    try {
-        EC.m[id](module, module.exports, EC);
-    } catch (e) {
-        console.warn("⚠ 実行エラー:", id, e);
-    }
-
-    return module.exports;
-};
-
-EC.m = {};
-EC.c = {};
-EC.missing = new Set();
-
-window.EC = EC;
-
-// ===============================
-// scriptロード
-// ===============================
-function loadScript(src) {
-    return new Promise((resolve, reject) => {
-        const s = document.createElement("script");
-        s.src = src;
-        s.onload = resolve;
-        s.onerror = reject;
-        document.body.appendChild(s);
-    });
+    return mod;
 }
 
 // ===============================
 (async () => {
 
-    console.log("=== FIXED WEBPACK HOOK ===");
+    console.log("=== ESM MODE ===");
 
-    await loadScript("./bloxd_chunk4.js");
-    await loadScript("./bloxd_chunk5.js");
+    const chunk5 = await loadChunk("./bloxd_chunk5.js");
 
-    console.log("🎯 TOTAL:", Object.keys(EC.m).length);
+    // 👇 ここが本体
+    const modules = chunk5.modules;
 
-    const mod = EC(1929);
+    console.log("🎯 modules:", Object.keys(modules).length);
 
-    console.log("📦 1929:", mod);
-    console.log("🔥 missing:", [...EC.missing]);
+    // ===============================
+    // require再現
+    // ===============================
+    const cache = {};
+
+    function require(id) {
+        if (!modules[id]) {
+            console.warn("❌ missing:", id);
+            return {};
+        }
+
+        if (cache[id]) return cache[id].exports;
+
+        const module = { exports: {} };
+        cache[id] = module;
+
+        modules[id](module, module.exports, require);
+
+        return module.exports;
+    }
+
+    // ===============================
+    // 🎯 実行
+    // ===============================
+    const mod1929 = require(1929);
+
+    console.log("📦 1929:", mod1929);
 
 })();
 </script>
