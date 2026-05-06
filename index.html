@@ -69,5 +69,15 @@ async function loadChunk(path) {
 
 })();
 </script>
+    <script>
+// ===============================
+// 🔍 blockMetadata探す
+// ===============================
+const targets = Object.entries(EC.m).filter(([id, fn]) =>
+    fn.toString().includes("blockMetadata")
+);
+
+console.log("🎯 blockMetadata候補:", targets.map(([id]) => id));
+</script>
 </body>
 </html>
