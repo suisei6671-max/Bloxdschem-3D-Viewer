@@ -10,18 +10,15 @@
 <script type="module">
 
 async function loadChunk(path) {
-    console.log("📦 loading:", path);
     const mod = await import(path);
     return mod.modules;
 }
 
 (async () => {
 
-    console.log("=== FULL WEBPACK EMULATION ===");
+    console.log("=== BLOCK METADATA HUNT ===");
 
     const modules = await loadChunk("./bloxd_chunk5.js");
-
-    console.log("🎯 modules:", Object.keys(modules).length);
 
     const cache = {};
 
@@ -41,34 +38,48 @@ async function loadChunk(path) {
         return module.exports;
     }
 
-    // ===============================
-    // 🔥 ここが超重要（不足してたやつ）
-    // ===============================
-
     EC.d = function(exports, definition) {
         for (const key in definition) {
-            if (!EC.o(exports, key)) {
-                Object.defineProperty(exports, key, {
-                    enumerable: true,
-                    get: definition[key]
-                });
-            }
+            Object.defineProperty(exports, key, {
+                enumerable: true,
+                get: definition[key]
+            });
         }
     };
 
-    EC.o = function(obj, prop) {
-        return Object.prototype.hasOwnProperty.call(obj, prop);
-    };
-
-    EC.r = function(exports) {
-        Object.defineProperty(exports, '__esModule', { value: true });
-    };
+    EC.o = (obj, prop) => Object.prototype.hasOwnProperty.call(obj, prop);
+    EC.r = (exports) => Object.defineProperty(exports, '__esModule', { value: true });
 
     // ===============================
+    // 🔥 1929 実行
+    // ===============================
+    const mod = EC(1929);
 
-    const mod1929 = EC(1929);
+    console.log("📦 module keys:", Object.keys(mod));
 
-    console.log("📦 1929:", mod1929);
+    // ===============================
+    // 🔥 getterを全部実行
+    // ===============================
+    for (const key of Object.keys(mod)) {
+        try {
+            const value = mod[key];
+
+            console.log("🔍", key, value);
+
+            // 🎯 blockMetadataっぽいもの検出
+            if (
+                value &&
+                typeof value === "object" &&
+                !Array.isArray(value) &&
+                Object.keys(value).length > 50
+            ) {
+                console.log("🎯 FOUND CANDIDATE:", key, value);
+            }
+
+        } catch (e) {
+            console.warn("⚠ getter error:", key);
+        }
+    }
 
 })();
 </script>
