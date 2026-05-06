@@ -7,64 +7,48 @@
 <body>
 
 <h2>bloxd chunk loader (stable)</h2>
-<script type="module">
-
-async function loadChunk(path) {
-    const mod = await import(path);
-    return mod.modules;
-}
-
+<script>
 (async () => {
+  console.log("=== TEST QC FUNCTION ===");
 
-    console.log("=== FINAL STEP ===");
+  const res = await fetch("./bloxd_chunk5.js");
+  const text = await res.text();
 
-    // 🔥 両方読み込む
-    const modules = {
-        ...(await loadChunk("./bloxd_chunk4.js")),
-        ...(await loadChunk("./bloxd_chunk5.js"))
-    };
+  const data = new Function("return " + text)();
 
-    console.log("🎯 modules:", Object.keys(modules).length);
+  const modules = data.modules;
 
-    const cache = {};
-
-    function EC(id) {
-        if (!modules[id]) {
-            console.warn("❌ missing:", id);
-            return {};
-        }
-
-        if (cache[id]) return cache[id].exports;
-
-        const module = { exports: {} };
-        cache[id] = module;
-
-        modules[id](module, module.exports, EC);
-
-        return module.exports;
+  // 簡易require
+  const cache = {};
+  function require(id) {
+    if (cache[id]) return cache[id].exports;
+    if (!modules[id]) {
+      console.warn("❌ missing:", id);
+      return {};
     }
+    const module = { exports: {} };
+    cache[id] = module;
+    modules[id](module, module.exports, require);
+    return module.exports;
+  }
 
-    EC.d = (exports, def) => {
-        for (const k in def) {
-            Object.defineProperty(exports, k, {
-                enumerable: true,
-                get: def[k]
-            });
-        }
-    };
+  // 1929読み込み
+  const mod = require(1929);
 
-    EC.o = (obj, prop) => Object.prototype.hasOwnProperty.call(obj, prop);
-    EC.r = (exports) => Object.defineProperty(exports, '__esModule', { value: true });
+  console.log("📦 module:", mod);
 
-    // ===============================
-    // 🔥 本命
-    // ===============================
-    const mod1911 = EC(1911);
+  // QC関数取得
+  const QC = mod.W;
 
-    console.log("📦 1911:", mod1911);
+  console.log("🎯 QC:", QC);
 
-    // 🎯 blockMetadata
-    console.log("🎯 blockMetadata:", mod1911.blockMetadata);
+  // ダミー引数で実行
+  try {
+    const result = QC("Stone", { rootMetaDesc: "meta|rot1|bot" });
+    console.log("🧪 QC result:", result);
+  } catch (e) {
+    console.error("❌ QC error:", e);
+  }
 
 })();
 </script>
