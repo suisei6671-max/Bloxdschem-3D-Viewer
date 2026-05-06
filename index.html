@@ -9,8 +9,12 @@
 <h2>bloxd chunk loader (stable)</h2>
 <script>
 (async () => {
+  console.log("=== WEBPACK EMULATION v2 ===");
+
   const mod = await import("./bloxd_chunk5.js");
   const modules = mod.modules;
+
+  console.log("📦 modules:", Object.keys(modules).length);
 
   const cache = {};
 
@@ -30,8 +34,44 @@
     return module.exports;
   }
 
+  // 🔥 webpack helper: define getter
+  require.d = (exports, definition) => {
+    for (const key in definition) {
+      if (!Object.prototype.hasOwnProperty.call(exports, key)) {
+        Object.defineProperty(exports, key, {
+          enumerable: true,
+          get: definition[key],
+        });
+      }
+    }
+  };
+
+  // 🔥 mark as ES module
+  require.r = (exports) => {
+    Object.defineProperty(exports, '__esModule', { value: true });
+  };
+
+  // 🔥 compatibility for default export
+  require.n = (module) => {
+    const getter = module && module.__esModule
+      ? () => module.default
+      : () => module;
+    require.d(getter, { a: getter });
+    return getter;
+  };
+
+  // 🔥 optional (一部で使われる)
+  require.o = (obj, prop) => Object.prototype.hasOwnProperty.call(obj, prop);
+
+  require.t = (value) => value;
+
+  console.log("🔥 require ready");
+
+  // 🎯 実行
   const m1929 = require(1929);
-  console.log("🎯 1929:", m1929);
+
+  console.log("🎯 1929 exports:", m1929);
+
 })();
 </script>
 </body>
