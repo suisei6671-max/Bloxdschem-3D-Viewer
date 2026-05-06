@@ -9,17 +9,37 @@
 <h2>bloxd chunk loader (stable)</h2>
 <script type="module">
 (async () => {
-  console.log("=== ESM LOAD ===");
+  console.log("=== ESM + REQUIRE ===");
 
-  // ESMとして読み込む
-  const mod = await import("./bloxd_chunk5.js");
+  const chunk = await import("./bloxd_chunk5.js");
 
-  console.log("📦 module:", mod);
+  const modules = chunk.modules;
+  console.log("🎯 modules:", Object.keys(modules).length);
 
-  // 1929が直接見える場合もある
-  if (mod.default) {
-    console.log("default:", mod.default);
+  // 🔥 require再現
+  const cache = {};
+
+  function require(id) {
+    if (cache[id]) return cache[id].exports;
+
+    if (!modules[id]) {
+      console.warn("❌ missing:", id);
+      return {};
+    }
+
+    const module = { exports: {} };
+    cache[id] = module;
+
+    modules[id](module, module.exports, require);
+
+    return module.exports;
   }
+
+  // 🔥 1929 実行
+  const mod1929 = require(1929);
+
+  console.log("📦 1929:", mod1929);
+  console.log("🔑 keys:", Object.keys(mod1929));
 
 })();
 </script>
