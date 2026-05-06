@@ -58,11 +58,20 @@ async function loadChunk(path) {
 
     const text = await fetch(path).then(r => r.text());
 
-    const start = text.indexOf("{");
-    let depth = 0;
-    let end = start;
+    // 🔥 modules の位置を正確に探す
+    const match = text.match(/modules\s*=\s*\{/);
 
-    for (let i = start; i < text.length; i++) {
+    if (!match) {
+        console.error("❌ modules not found");
+        return;
+    }
+
+    const braceStart = match.index + match[0].length - 1;
+
+    let depth = 0;
+    let end = braceStart;
+
+    for (let i = braceStart; i < text.length; i++) {
         if (text[i] === "{") depth++;
         if (text[i] === "}") depth--;
 
@@ -72,9 +81,17 @@ async function loadChunk(path) {
         }
     }
 
-    const objText = text.slice(start, end + 1);
+    const objText = text.slice(braceStart, end + 1);
 
-    const modules = new Function("return " + objText)();
+    console.log("🧪 preview:", objText.slice(0, 120));
+
+    let modules;
+    try {
+        modules = new Function("return " + objText)();
+    } catch (e) {
+        console.error("❌ parse failed:", e);
+        return;
+    }
 
     Object.assign(EC.m, modules);
 
@@ -84,17 +101,16 @@ async function loadChunk(path) {
 // ===============================
 (async () => {
 
-    console.log("=== DEP CHECK ===");
+    console.log("=== STABLE LOAD ===");
 
     await loadChunk("./bloxd_chunk4.js");
     await loadChunk("./bloxd_chunk5.js");
 
     console.log("🎯 TOTAL:", Object.keys(EC.m).length);
 
-    // 実行
     EC(1929);
 
-    console.log("🔥 missing一覧:", [...EC.missing]);
+    console.log("🔥 missing:", [...EC.missing]);
 
 })();
 </script>
