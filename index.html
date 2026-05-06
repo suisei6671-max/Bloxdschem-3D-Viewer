@@ -12,6 +12,7 @@
 const EC = function(id) {
     if (!EC.m[id]) {
         console.warn("❌ missing module:", id);
+        EC.missing.add(id);
         return {};
     }
 
@@ -31,6 +32,8 @@ const EC = function(id) {
 
 EC.m = {};
 EC.c = {};
+EC.missing = new Set();
+
 window.EC = EC;
 
 // ===============================
@@ -55,19 +58,11 @@ async function loadChunk(path) {
 
     const text = await fetch(path).then(r => r.text());
 
-    // 🔥 修正ポイント
-    const assignIndex = text.indexOf("modules =");
-    if (assignIndex === -1) {
-        console.error("❌ modules= not found");
-        return;
-    }
-
-    const braceStart = text.indexOf("{", assignIndex);
-
+    const start = text.indexOf("{");
     let depth = 0;
-    let end = braceStart;
+    let end = start;
 
-    for (let i = braceStart; i < text.length; i++) {
+    for (let i = start; i < text.length; i++) {
         if (text[i] === "{") depth++;
         if (text[i] === "}") depth--;
 
@@ -77,17 +72,9 @@ async function loadChunk(path) {
         }
     }
 
-    const objText = text.slice(braceStart, end + 1);
+    const objText = text.slice(start, end + 1);
 
-    console.log("🧪 preview:", objText.slice(0, 200));
-
-    let modules;
-    try {
-        modules = new Function("return " + objText)();
-    } catch (e) {
-        console.error("❌ parse failed:", e);
-        return;
-    }
+    const modules = new Function("return " + objText)();
 
     Object.assign(EC.m, modules);
 
@@ -97,16 +84,17 @@ async function loadChunk(path) {
 // ===============================
 (async () => {
 
-    console.log("=== RETRY ===");
+    console.log("=== DEP CHECK ===");
 
     await loadChunk("./bloxd_chunk4.js");
     await loadChunk("./bloxd_chunk5.js");
 
     console.log("🎯 TOTAL:", Object.keys(EC.m).length);
 
-    const mod = EC(1929);
+    // 実行
+    EC(1929);
 
-    console.log("📦 module 1929:", mod);
+    console.log("🔥 missing一覧:", [...EC.missing]);
 
 })();
 </script>
