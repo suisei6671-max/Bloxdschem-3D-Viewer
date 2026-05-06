@@ -16,9 +16,15 @@ async function loadChunk(path) {
 
 (async () => {
 
-    console.log("=== BLOCK METADATA HUNT ===");
+    console.log("=== FINAL STEP ===");
 
-    const modules = await loadChunk("./bloxd_chunk5.js");
+    // 🔥 両方読み込む
+    const modules = {
+        ...(await loadChunk("./bloxd_chunk4.js")),
+        ...(await loadChunk("./bloxd_chunk5.js"))
+    };
+
+    console.log("🎯 modules:", Object.keys(modules).length);
 
     const cache = {};
 
@@ -38,11 +44,11 @@ async function loadChunk(path) {
         return module.exports;
     }
 
-    EC.d = function(exports, definition) {
-        for (const key in definition) {
-            Object.defineProperty(exports, key, {
+    EC.d = (exports, def) => {
+        for (const k in def) {
+            Object.defineProperty(exports, k, {
                 enumerable: true,
-                get: definition[key]
+                get: def[k]
             });
         }
     };
@@ -51,35 +57,14 @@ async function loadChunk(path) {
     EC.r = (exports) => Object.defineProperty(exports, '__esModule', { value: true });
 
     // ===============================
-    // 🔥 1929 実行
+    // 🔥 本命
     // ===============================
-    const mod = EC(1929);
+    const mod1911 = EC(1911);
 
-    console.log("📦 module keys:", Object.keys(mod));
+    console.log("📦 1911:", mod1911);
 
-    // ===============================
-    // 🔥 getterを全部実行
-    // ===============================
-    for (const key of Object.keys(mod)) {
-        try {
-            const value = mod[key];
-
-            console.log("🔍", key, value);
-
-            // 🎯 blockMetadataっぽいもの検出
-            if (
-                value &&
-                typeof value === "object" &&
-                !Array.isArray(value) &&
-                Object.keys(value).length > 50
-            ) {
-                console.log("🎯 FOUND CANDIDATE:", key, value);
-            }
-
-        } catch (e) {
-            console.warn("⚠ getter error:", key);
-        }
-    }
+    // 🎯 blockMetadata
+    console.log("🎯 blockMetadata:", mod1911.blockMetadata);
 
 })();
 </script>
