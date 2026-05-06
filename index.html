@@ -7,17 +7,32 @@
 <body>
 
 <h2>bloxd chunk loader (stable)</h2>
-<script>
+<script type="module">
 (async () => {
-  const mod = await import("./bloxd_chunk5.js");
-  const modules = mod.modules;
+  console.log("=== FULL MERGE MODE ===");
+
+  const chunks = [
+    "./bloxd_chunk4.js",
+    "./bloxd_chunk5.js",
+    "./bloxd_chunk6.js",
+    "./bloxd_chunk7.js"
+  ];
+
+  const allModules = {};
+
+  for (const path of chunks) {
+    const mod = await import(path);
+    Object.assign(allModules, mod.modules);
+  }
+
+  console.log("📦 TOTAL modules:", Object.keys(allModules).length);
 
   const cache = {};
 
   function require(id) {
     if (cache[id]) return cache[id].exports;
 
-    if (!modules[id]) {
+    if (!allModules[id]) {
       console.warn("❌ missing:", id);
       return {};
     }
@@ -25,11 +40,12 @@
     const module = { exports: {} };
     cache[id] = module;
 
-    modules[id](module, module.exports, require);
+    allModules[id](module, module.exports, require);
 
     return module.exports;
   }
 
+  // webpack helpers
   require.d = (exports, definition) => {
     for (const key in definition) {
       Object.defineProperty(exports, key, {
@@ -51,20 +67,17 @@
     return getter;
   };
 
-  // 👇これ追加（重要）
+  require.o = (obj, prop) => Object.prototype.hasOwnProperty.call(obj, prop);
+
+  // global expose
   window.__req = require;
-  window.__mods = modules;
 
-  console.log("🔥 global require ready");
+  console.log("🔥 READY");
 
-})();
-</script>
-<script type="module">
-(async () => {
-  await import("./bloxd_chunk4.js");
-  await import("./bloxd_chunk5.js");
+  // 🎯 テスト
+  const m1929 = require(1929);
+  console.log("🎯 1929:", m1929);
 
-  console.log("✅ chunks loaded");
 })();
 </script>
 </body>
