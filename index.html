@@ -7,76 +7,48 @@
 <body>
 
 <h2>bloxd chunk loader (stable)</h2>
-<script type="module">
+<script>
 (async () => {
-  console.log("=== FULL MERGE MODE ===");
 
-  const chunks = [
-    "./bloxd_chunk4.js",
-    "./bloxd_chunk5.js",
-    "./bloxd_chunk6.js",
-    "./bloxd_chunk7.js"
-  ];
+  console.log("=== SAFE MODULE EXTRACT ===");
 
-  const allModules = {};
+  async function extractModules(path) {
 
-  for (const path of chunks) {
-    const mod = await import(path);
-    Object.assign(allModules, mod.modules);
-  }
+    console.log("📦 loading:", path);
 
-  console.log("📦 TOTAL modules:", Object.keys(allModules).length);
+    const text = await fetch(path).then(r => r.text());
 
-  const cache = {};
+    console.log("🧪 preview:", text.slice(0, 120));
 
-  function require(id) {
-    if (cache[id]) return cache[id].exports;
+    // modules: { ... }
+    const match = text.match(/modules\s*:\s*\{([\s\S]*?)\}\s*\}/);
 
-    if (!allModules[id]) {
-      console.warn("❌ missing:", id);
+    if (!match) {
+      console.error("❌ modules not found");
       return {};
     }
 
-    const module = { exports: {} };
-    cache[id] = module;
+    const objText = "({" + match[1] + "})";
 
-    allModules[id](module, module.exports, require);
+    console.log("🧠 parsing modules...");
 
-    return module.exports;
+    const modules = new Function("return " + objText)();
+
+    console.log("✅ extracted:", Object.keys(modules).length);
+
+    return modules;
   }
 
-  // webpack helpers
-  require.d = (exports, definition) => {
-    for (const key in definition) {
-      Object.defineProperty(exports, key, {
-        enumerable: true,
-        get: definition[key],
-      });
-    }
+  const allModules = {
+    ...(await extractModules("./bloxd_chunk4.js")),
+    ...(await extractModules("./bloxd_chunk5.js")),
+    ...(await extractModules("./bloxd_chunk6.js")),
+    ...(await extractModules("./bloxd_chunk7.js")),
   };
 
-  require.r = (exports) => {
-    Object.defineProperty(exports, '__esModule', { value: true });
-  };
+  console.log("🎯 TOTAL:", Object.keys(allModules).length);
 
-  require.n = (module) => {
-    const getter = module && module.__esModule
-      ? () => module.default
-      : () => module;
-    require.d(getter, { a: getter });
-    return getter;
-  };
-
-  require.o = (obj, prop) => Object.prototype.hasOwnProperty.call(obj, prop);
-
-  // global expose
-  window.__req = require;
-
-  console.log("🔥 READY");
-
-  // 🎯 テスト
-  const m1929 = require(1929);
-  console.log("🎯 1929:", m1929);
+  window.__mods = allModules;
 
 })();
 </script>
