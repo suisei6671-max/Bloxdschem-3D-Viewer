@@ -1,0 +1,682 @@
+[
+    {
+        "name": "Unloaded",
+        "textureInfo": "unloaded"
+    },
+    {
+        "name": "Dirt",
+        "textureInfo": "dirt"
+    },
+    {
+        "name": "Messy Dirt",
+        "textureInfo": "coarse_dirt"
+    },
+    {
+        "name": "Grass Block",
+        "textureInfo": "grass_top"
+    },
+    {
+        "name": "Sand",
+        "textureInfo": "sand"
+    },
+    {
+        "name": "Clay",
+        "textureInfo": "clay"
+    },
+    {
+        "name": "Gravel",
+        "textureInfo": "gravel"
+    },
+    {
+        "name": "Snow",
+        "textureInfo": "snow"
+    },
+    {
+        "name": "Maple Log",
+        "textureInfo": "log_maple"
+    },
+    {
+        "name": "Pine Log",
+        "textureInfo": "log_pine"
+    },
+    {
+        "name": "Plum Log",
+        "textureInfo": "log_plum"
+    },
+    {
+        "name": "Cedar Log",
+        "textureInfo": "log_cedar"
+    },
+    {
+        "name": "Aspen Log",
+        "textureInfo": "log_aspen"
+    },
+    {
+        "name": "Jungle Log",
+        "textureInfo": "log_jungle"
+    },
+    {
+        "name": "Maple Wood Planks",
+        "textureInfo": "planks_maple"
+    },
+    {
+        "name": "Aspen Wood Planks",
+        "textureInfo": "planks_aspen"
+    },
+    {
+        "name": "Plum Wood Planks",
+        "textureInfo": "planks_plum"
+    },
+    {
+        "name": "Jungle Wood Planks",
+        "textureInfo": "planks_jungle"
+    },
+    {
+        "name": "Pine Wood Planks",
+        "textureInfo": "planks_pine"
+    },
+    {
+        "name": "Cedar Wood Planks",
+        "textureInfo": "planks_cedar"
+    },
+    {
+        "name": "Barkless Maple Log",
+        "textureInfo": "stripped_maple_log"
+    },
+    {
+        "name": "Barkless Aspen Log",
+        "textureInfo": "stripped_aspen_log"
+    },
+    {
+        "name": "Barkless Plum Log",
+        "textureInfo": "stripped_plum_log"
+    },
+    {
+        "name": "Barkless Jungle Log",
+        "textureInfo": "stripped_jungle_log"
+    },
+    {
+        "name": "Barkless Pine Log",
+        "textureInfo": "stripped_pine_log"
+    },
+    {
+        "name": "Barkless Cedar Log",
+        "textureInfo": "stripped_cedar_log"
+    },
+    {
+        "name": "free_placeholder2",
+        "textureInfo": "messy_stone"
+    },
+    {
+        "name": "Stone",
+        "textureInfo": "stone"
+    },
+    {
+        "name": "Messy Stone",
+        "textureInfo": "messy_stone"
+    },
+    {
+        "name": "free_placeholder",
+        "textureInfo": "messy_stone"
+    },
+    {
+        "name": "Smooth Stone",
+        "textureInfo": "smooth_stone"
+    },
+    {
+        "name": "Diorite",
+        "textureInfo": "stone_diorite"
+    },
+    {
+        "name": "Smooth Diorite",
+        "textureInfo": "stone_diorite_smooth"
+    },
+    {
+        "name": "Andesite",
+        "textureInfo": "stone_andesite"
+    },
+    {
+        "name": "Smooth Andesite",
+        "textureInfo": "stone_andesite_smooth"
+    },
+    {
+        "name": "Granite",
+        "textureInfo": "stone_granite"
+    },
+    {
+        "name": "Smooth Granite",
+        "textureInfo": "stone_granite_smooth"
+    },
+    {
+        "name": "Sandstone",
+        "textureInfo": "sandstone_normal"
+    },
+    {
+        "name": "Yellowstone",
+        "textureInfo": "end_stone"
+    },
+    {
+        "name": "Coal Ore",
+        "textureInfo": "coal_ore"
+    },
+    {
+        "name": "Iron Ore",
+        "textureInfo": "iron_ore"
+    },
+    {
+        "name": "Gold Ore",
+        "textureInfo": "gold_ore"
+    },
+    {
+        "name": "Lapis Lazuli Ore",
+        "textureInfo": "lapis_ore"
+    },
+    {
+        "name": "Emerald Ore",
+        "textureInfo": "emerald_ore"
+    },
+    {
+        "name": "Diamond Ore",
+        "textureInfo": "diamond_ore"
+    },
+    {
+        "name": "Block of Coal",
+        "textureInfo": "coal_block"
+    },
+    {
+        "name": "Block of Iron",
+        "textureInfo": "iron_block"
+    },
+    {
+        "name": "Block of Gold",
+        "textureInfo": "gold_block"
+    },
+    {
+        "name": "Block of Lapis Lazuli",
+        "textureInfo": "lapis_block"
+    },
+    {
+        "name": "Block of Emerald",
+        "textureInfo": "emerald_block"
+    },
+    {
+        "name": "White Wool",
+        "textureInfo": "wool_colored_white"
+    },
+    {
+        "name": "Orange Wool",
+        "textureInfo": "wool_colored_orange"
+    },
+    {
+        "name": "Magenta Wool",
+        "textureInfo": "wool_colored_magenta"
+    },
+    {
+        "name": "Light Blue Wool",
+        "textureInfo": "wool_colored_light_blue"
+    },
+    {
+        "name": "Yellow Wool",
+        "textureInfo": "wool_colored_yellow"
+    },
+    {
+        "name": "Lime Wool",
+        "textureInfo": "wool_colored_lime"
+    },
+    {
+        "name": "Pink Wool",
+        "textureInfo": "wool_colored_pink"
+    },
+    {
+        "name": "Gray Wool",
+        "textureInfo": "wool_colored_gray"
+    },
+    {
+        "name": "Light Gray Wool",
+        "textureInfo": "wool_colored_light_grey"
+    },
+    {
+        "name": "Cyan Wool",
+        "textureInfo": "wool_colored_cyan"
+    },
+    {
+        "name": "Purple Wool",
+        "textureInfo": "wool_colored_purple"
+    },
+    {
+        "name": "Blue Wool",
+        "textureInfo": "wool_colored_blue"
+    },
+    {
+        "name": "Brown Wool",
+        "textureInfo": "wool_colored_brown"
+    },
+    {
+        "name": "Green Wool",
+        "textureInfo": "wool_colored_green"
+    },
+    {
+        "name": "Red Wool",
+        "textureInfo": "wool_colored_red"
+    },
+    {
+        "name": "Black Wool",
+        "textureInfo": "wool_colored_black"
+    },
+    {
+        "name": "Baked Clay",
+        "textureInfo": "hardened_clay"
+    },
+    {
+        "name": "White Baked Clay",
+        "textureInfo": "hardened_clay_stained_white"
+    },
+    {
+        "name": "Orange Baked Clay",
+        "textureInfo": "hardened_clay_stained_orange"
+    },
+    {
+        "name": "Magenta Baked Clay",
+        "textureInfo": "hardened_clay_stained_magenta"
+    },
+    {
+        "name": "Light Blue Baked Clay",
+        "textureInfo": "hardened_clay_stained_light_blue"
+    },
+    {
+        "name": "Yellow Baked Clay",
+        "textureInfo": "hardened_clay_stained_yellow"
+    },
+    {
+        "name": "Lime Baked Clay",
+        "textureInfo": "hardened_clay_stained_lime"
+    },
+    {
+        "name": "Pink Baked Clay",
+        "textureInfo": "hardened_clay_stained_pink"
+    },
+    {
+        "name": "Gray Baked Clay",
+        "textureInfo": "hardened_clay_stained_gray"
+    },
+    {
+        "name": "Light Gray Baked Clay",
+        "textureInfo": "hardened_clay_stained_silver"
+    },
+    {
+        "name": "Cyan Baked Clay",
+        "textureInfo": "hardened_clay_stained_cyan"
+    },
+    {
+        "name": "Purple Baked Clay",
+        "textureInfo": "hardened_clay_stained_purple"
+    },
+    {
+        "name": "Blue Baked Clay",
+        "textureInfo": "hardened_clay_stained_blue"
+    },
+    {
+        "name": "Brown Baked Clay",
+        "textureInfo": "hardened_clay_stained_brown"
+    },
+    {
+        "name": "Green Baked Clay",
+        "textureInfo": "hardened_clay_stained_green"
+    },
+    {
+        "name": "Red Baked Clay",
+        "textureInfo": "hardened_clay_stained_red"
+    },
+    {
+        "name": "Black Baked Clay",
+        "textureInfo": "hardened_clay_stained_black"
+    },
+    {
+        "name": "Gray Concrete",
+        "textureInfo": "gray_concrete"
+    },
+    {
+        "name": "Light Gray Concrete",
+        "textureInfo": "light_gray_concrete"
+    },
+    {
+        "name": "Black Concrete",
+        "textureInfo": "black_concrete"
+    },
+    {
+        "name": "Blue Concrete",
+        "textureInfo": "blue_concrete"
+    },
+    {
+        "name": "Brown Concrete",
+        "textureInfo": "brown_concrete"
+    },
+    {
+        "name": "Cyan Concrete",
+        "textureInfo": "cyan_concrete"
+    },
+    {
+        "name": "Light Blue Concrete",
+        "textureInfo": "light_blue_concrete"
+    },
+    {
+        "name": "Lime Concrete",
+        "textureInfo": "lime_concrete"
+    },
+    {
+        "name": "Magenta Concrete",
+        "textureInfo": "magenta_concrete"
+    },
+    {
+        "name": "Orange Concrete",
+        "textureInfo": "orange_concrete"
+    },
+    {
+        "name": "Pink Concrete",
+        "textureInfo": "pink_concrete"
+    },
+    {
+        "name": "Purple Concrete",
+        "textureInfo": "purple_concrete"
+    },
+    {
+        "name": "Red Concrete",
+        "textureInfo": "red_concrete"
+    },
+    {
+        "name": "White Concrete",
+        "textureInfo": "white_concrete"
+    },
+    {
+        "name": "Green Concrete",
+        "textureInfo": "green_concrete"
+    },
+    {
+        "name": "Yellow Concrete",
+        "textureInfo": "yellow_concrete"
+    },
+    {
+        "name": "Pine Leaves",
+        "textureInfo": "leaves_pine"
+    },
+    {
+        "name": "Aspen Leaves",
+        "textureInfo": "leaves_aspen"
+    },
+    {
+        "name": "Maple Leaves",
+        "textureInfo": "leaves_maple"
+    },
+    {
+        "name": "Jungle Leaves",
+        "textureInfo": "leaves_jungle"
+    },
+    {
+        "name": "Pumpkin_placeholder",
+        "textureInfo": "pumpkin_face_on"
+    },
+    {
+        "name": "Watermelon",
+        "textureInfo": [
+            "watermelon_side",
+            "watermelon_top"
+        ],
+        "texturePerSide": [0,0,1,1,0,0]
+    },
+    {
+        "name": "Glass",
+        "textureInfo": "glass"
+    },
+    {
+        "name": "Black Glass",
+        "textureInfo": "glass_black"
+    },
+    {
+        "name": "Blue Glass",
+        "textureInfo": "glass_blue"
+    },
+    {
+        "name": "Brown Glass",
+        "textureInfo": "glass_brown"
+    },
+    {
+        "name": "Cyan Glass",
+        "textureInfo": "glass_cyan"
+    },
+    {
+        "name": "Gray Glass",
+        "textureInfo": "glass_gray"
+    },
+    {
+        "name": "Light Gray Glass",
+        "textureInfo": "glass_light_gray"
+    },
+    {
+        "name": "Green Glass",
+        "textureInfo": "glass_green"
+    },
+    {
+        "name": "Light Blue Glass",
+        "textureInfo": "glass_light_blue"
+    },
+    {
+        "name": "Lime Glass",
+        "textureInfo": "glass_lime"
+    },
+    {
+        "name": "Magenta Glass",
+        "textureInfo": "glass_magenta"
+    },
+    {
+        "name": "Orange Glass",
+        "textureInfo": "glass_orange"
+    },
+    {
+        "name": "Pink Glass",
+        "textureInfo": "glass_pink"
+    },
+    {
+        "name": "Purple Glass",
+        "textureInfo": "glass_purple"
+    },
+    {
+        "name": "Red Glass",
+        "textureInfo": "glass_red"
+    },
+    {
+        "name": "White Glass",
+        "textureInfo": "glass_white"
+    },
+    {
+        "name": "Yellow Glass",
+        "textureInfo": "glass_yellow"
+    },
+    {
+        "name": "UNUSED BLOCK TYPE",
+        "textureInfo": "glass_silver"
+    },
+    {
+        "name": "Dim Lamp On",
+        "textureInfo": "redstone_lamp_on"
+    },
+    {
+        "name": "Dim Lamp Off",
+        "textureInfo": "redstone_lamp_off"
+    },
+    {
+        "name": "Water",
+        "textureInfo": [
+            ".5",
+            ".5",
+            ".8",
+            ".9"
+        ]
+    },
+    {
+        "name": "Invisible Solid",
+        "textureInfo": "invisible_solid"
+    },
+    {
+        "name": "Bricks",
+        "textureInfo": "brick"
+    },
+    {
+        "name": "Stone Bricks",
+        "textureInfo": "stonebrick"
+    },
+    {
+        "name": "Dark Red Brick",
+        "textureInfo": "nether_brick"
+    },
+    {
+        "name": "Dark Red Stone",
+        "textureInfo": "netherrack"
+    },
+    {
+        "name": "Block of Quartz",
+        "textureInfo": "quartz_block_side"
+    },
+    {
+        "name": "Chiseled Block of Quartz",
+        "textureInfo": "quartz_block_chiseled"
+    },
+    {
+        "name": "Engraved Stone",
+        "textureInfo": "stonebrick_carved"
+    },
+    {
+        "name": "Mossy Stone Bricks",
+        "textureInfo": "stonebrick_mossy"
+    },
+    {
+        "name": "Cracked Stone Bricks",
+        "textureInfo": "stonebrick_cracked"
+    },
+    {
+        "name": "Smooth Sandstone",
+        "textureInfo": "sandstone_top"
+    },
+    {
+        "name": "Engraved Sandstone",
+        "textureInfo": "chiseled_sandstone"
+    },
+    {
+        "name": "Ice",
+        "textureInfo": "ice"
+    },
+    {
+        "name": "Obsidian",
+        "textureInfo": "obsidian"
+    },
+    {
+        "name": "Hay Bale",
+        "textureInfo": "hay_block_side"
+    },
+    {
+        "name": "Sponge",
+        "textureInfo": "sponge"
+    },
+    {
+        "name": "Beacon",
+        "textureInfo": "beacon"
+    },
+    {
+        "name": "temp",
+        "textureInfo": "missing"
+    },
+    {
+        "name": "Golden Decoration",
+        "textureInfo": "glowstone"
+    },
+    {
+        "name": "Moonstone Explosive",
+        "textureInfo": [
+            "moonstone_explosive_side",
+            "moonstone_explosive_top"
+        ],
+        "texturePerSide": [0,0,1,1,0,0]
+    },
+    {
+        "name": "Bedrock",
+        "textureInfo": "bedrock"
+    },
+    {
+        "name": "Smooth Double Stone Slab",
+        "textureInfo": "smooth_stone"
+    },
+    {
+        "name": "Cactus",
+        "textureInfo": "small_cactus",
+        "model": "CentreCross"
+    },
+    {
+        "name": "Grass",
+        "textureInfo": "tallgrass",
+        "model": "CentreCross"
+    },
+    {
+        "name": "Dandelion",
+        "textureInfo": "dandelion",
+        "model": "CentreCross"
+    },
+    {
+        "name": "Poppy",
+        "textureInfo": "poppy",
+        "model": "CentreCross"
+    },
+    {
+        "name": "Red Tulip",
+        "textureInfo": "red_tulip",
+        "model": "CentreCross"
+    },
+    {
+        "name": "Pink Tulip",
+        "textureInfo": "pink_tulip",
+        "model": "CentreCross"
+    },
+    {
+        "name": "White Tulip",
+        "textureInfo": "white_tulip",
+        "model": "CentreCross"
+    },
+    {
+        "name": "Orange Tulip",
+        "textureInfo": "orange_tulip",
+        "model": "CentreCross"
+    },
+    {
+        "name": "Daisy",
+        "textureInfo": "oxeye_daisy",
+        "model": "CentreCross"
+    },
+    {
+        "name": "Bluebell",
+        "textureInfo": "blue_orchid",
+        "model": "CentreCross"
+    },
+    {
+        "name": "Forget-me-not",
+        "textureInfo": "cornflower",
+        "model": "CentreCross"
+    },
+    {
+        "name": "Allium",
+        "textureInfo": "allium",
+        "model": "CentreCross"
+    },
+    {
+        "name": "Azure Bluet",
+        "textureInfo": "azure_bluet",
+        "model": "CentreCross"
+    },
+    {
+        "name": "Lily of the Valley",
+        "textureInfo": "lily_of_the_valley",
+        "model": "CentreCross"
+    },
+    {
+        "name": "Shadow Rose",
+        "textureInfo": "shadow_rose",
+        "model": "CentreCross"
+    }
+]
