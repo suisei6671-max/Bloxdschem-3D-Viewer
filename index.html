@@ -6,9 +6,28 @@
 <title>Bloxd Viewer</title>
 <style>
 *{box-sizing:border-box}
-html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#1d1f27;font-family:sans-serif;color:#fff}
-#app{position:relative;width:100%;height:100%}
-#noa-canvas{position:absolute;left:0;top:0;width:100%;height:100%;image-rendering:pixelated}
+html,body{
+margin:0;
+width:100%;
+height:100%;
+overflow:hidden;
+background:#1d1f27;
+font-family:sans-serif;
+color:#fff
+}
+#app{
+position:relative;
+width:100%;
+height:100%
+}
+#noa-canvas{
+position:absolute;
+left:0;
+top:0;
+width:100%;
+height:100%;
+image-rendering:pixelated
+}
 #ui{
 position:absolute;
 left:12px;
@@ -22,7 +41,10 @@ padding:14px;
 backdrop-filter:blur(8px);
 z-index:10
 }
-input,button{width:100%;margin-bottom:10px}
+input,button{
+width:100%;
+margin-bottom:10px
+}
 button{
 border:none;
 border-radius:10px;
@@ -256,14 +278,16 @@ return tex;
 
 }
 
-function getMaterial(name){
+function getMaterial(name,rotate=false){
 
-if(materialCache.has(name)){
-return materialCache.get(name);
+const key=name+(rotate?"_rot":"");
+
+if(materialCache.has(key)){
+return materialCache.get(key);
 }
 
 const mat=new BABYLON.StandardMaterial(
-name,
+key,
 scene
 );
 
@@ -285,9 +309,19 @@ BABYLON.Texture.NEAREST_SAMPLINGMODE
 
 mat.diffuseTexture.hasAlpha=true;
 
+if(rotate){
+
+mat.diffuseTexture.wAng=
+Math.PI/2;
+
+mat.diffuseTexture.vScale=
+-1;
+
 }
 
-materialCache.set(name,mat);
+}
+
+materialCache.set(key,mat);
 
 return mat;
 
@@ -564,9 +598,27 @@ if(!visible){
 continue;
 }
 
+const faceUV=[];
+
+for(let i=0;i<6;i++){
+
+faceUV.push(
+new BABYLON.Vector4(
+0,
+0,
+1,
+1
+)
+);
+
+}
+
 const box=BABYLON.MeshBuilder.CreateBox(
 "b",
-{size:1},
+{
+size:1,
+faceUV
+},
 scene
 );
 
@@ -580,57 +632,17 @@ block.textureInfo
 
 }else if(Array.isArray(block.textureInfo)){
 
-const multi=new BABYLON.MultiMaterial(
-"multi",
-scene
-);
-
-for(let face=0;face<6;face++){
-
 const texIndex=
-block.texturePerSide?.[face]??0;
+block.texturePerSide?.[0]??0;
 
 const texName=
 block.textureInfo[texIndex];
 
-const mat=
-getMaterial(texName).clone(
-texName+"_f_"+face
+box.material=
+getMaterial(
+texName,
+true
 );
-
-if(face===0||face===1){
-
-mat.diffuseTexture.wAng=
-Math.PI/2;
-
-mat.diffuseTexture.vScale=
--1;
-
-}
-
-multi.subMaterials.push(mat);
-
-}
-
-box.material=multi;
-
-const verticesCount=
-box.getTotalVertices();
-
-box.subMeshes=[];
-
-for(let face=0;face<6;face++){
-
-new BABYLON.SubMesh(
-face,
-0,
-verticesCount,
-face*6,
-6,
-box
-);
-
-}
 
 }
 
