@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Bloxd Schem Viewer</title>
-
 <style>
 *{box-sizing:border-box}
 html,body{
@@ -36,14 +35,14 @@ top:12px;
 width:420px;
 max-height:calc(100% - 24px);
 overflow:auto;
-background:rgba(0,0,0,.72);
+background:rgba(0,0,0,.75);
 border:1px solid rgba(255,255,255,.08);
 border-radius:16px;
 padding:14px;
-z-index:5;
-backdrop-filter:blur(8px)
+backdrop-filter:blur(8px);
+z-index:10
 }
-button,input{
+input,button{
 width:100%;
 margin-bottom:10px
 }
@@ -59,6 +58,12 @@ cursor:pointer
 button:hover{
 filter:brightness(1.08)
 }
+.stat{
+display:flex;
+justify-content:space-between;
+margin-bottom:6px;
+font-size:13px
+}
 pre{
 margin:0;
 padding:10px;
@@ -70,12 +75,6 @@ white-space:pre-wrap;
 word-break:break-word;
 max-height:320px;
 overflow:auto
-}
-.stat{
-display:flex;
-justify-content:space-between;
-margin-bottom:6px;
-font-size:13px
 }
 </style>
 </head>
@@ -104,12 +103,12 @@ Build Viewer
 </div>
 
 <div class="stat">
-<span>Visible Faces</span>
+<span>Faces</span>
 <span id="faceCount">0</span>
 </div>
 
 <div class="stat">
-<span>Rendered Meshes</span>
+<span>Meshes</span>
 <span id="meshCount">0</span>
 </div>
 
@@ -119,8 +118,8 @@ Build Viewer
 </div>
 
 <script src="https://cdn.babylonjs.com/babylon.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/avsc@5.7.9/etc/browser/avsc.min.js"></script>
-  <script>
+
+<script>
 
 const logEl=document.getElementById("log");
 
@@ -190,7 +189,6 @@ scene
 );
 
 camera.attachControl(canvas,true);
-
 camera.wheelDeltaPercentage=.02;
 
 const hemi=
@@ -217,85 +215,8 @@ const materialCache=new Map();
 
 let blockData=[];
 
-const blockNameMap=
-new Map();
-
 const blockIdMap=
 new Map();
-
-const schema={
-type:"record",
-name:"Schematic",
-fields:[
-{
-name:"headers",
-type:{
-type:"fixed",
-name:"Header",
-size:4
-}
-},
-{
-name:"name",
-type:"string"
-},
-{
-name:"x",
-type:"int"
-},
-{
-name:"y",
-type:"int"
-},
-{
-name:"z",
-type:"int"
-},
-{
-name:"sizeX",
-type:"int"
-},
-{
-name:"sizeY",
-type:"int"
-},
-{
-name:"sizeZ",
-type:"int"
-},
-{
-name:"chunks",
-type:{
-type:"array",
-items:{
-type:"record",
-name:"Chunk",
-fields:[
-{
-name:"x",
-type:"int"
-},
-{
-name:"y",
-type:"int"
-},
-{
-name:"z",
-type:"int"
-},
-{
-name:"blocks",
-type:"bytes"
-}
-]
-}
-}
-}
-]
-};
-
-const avroType=
-avsc.Type.forSchema(schema);
 
 async function extractTextures(){
 
@@ -400,15 +321,7 @@ await res.json();
 
 blockData.forEach((b,i)=>{
 
-blockNameMap.set(
-b.name,
-b
-);
-
-blockIdMap.set(
-i,
-b
-);
+blockIdMap.set(i,b);
 
 });
 
@@ -436,6 +349,7 @@ name
 );
 
 return null;
+
 }
 
 const tex=
@@ -503,6 +417,164 @@ mat
 );
 
 return mat;
+
+}
+
+function readVarInt(bytes,state){
+
+let shift=0;
+let result=0;
+
+while(true){
+
+const b=
+bytes[state.i++];
+
+result|=
+(b&127)<<shift;
+
+if(!(b&128)){
+break;
+}
+
+shift+=7;
+
+}
+
+return(
+result>>>1
+)^-(result&1);
+
+}
+
+function readString(bytes,state){
+
+const len=
+readVarInt(bytes,state);
+
+const slice=
+bytes.slice(
+state.i,
+state.i+len
+);
+
+state.i+=len;
+
+return new TextDecoder().decode(slice);
+
+}
+
+function readBytes(bytes,state){
+
+const len=
+readVarInt(bytes,state);
+
+const slice=
+bytes.slice(
+state.i,
+state.i+len
+);
+
+state.i+=len;
+
+return slice;
+
+}
+
+async function loadSchem(file){
+
+const buffer=
+await file.arrayBuffer();
+
+const bytes=
+new Uint8Array(buffer);
+
+const s={i:0};
+
+const headers=
+bytes.slice(0,4);
+
+s.i=4;
+
+const schem={};
+
+schem.name=
+readString(bytes,s);
+
+schem.x=
+readVarInt(bytes,s);
+
+schem.y=
+readVarInt(bytes,s);
+
+schem.z=
+readVarInt(bytes,s);
+
+schem.sizeX=
+readVarInt(bytes,s);
+
+schem.sizeY=
+readVarInt(bytes,s);
+
+schem.sizeZ=
+readVarInt(bytes,s);
+
+schem.chunks=[];
+
+while(true){
+
+const blockCount=
+readVarInt(bytes,s);
+
+if(blockCount===0){
+break;
+}
+
+for(
+let i=0;
+i<blockCount;
+i++
+){
+
+const chunk={};
+
+chunk.x=
+readVarInt(bytes,s);
+
+chunk.y=
+readVarInt(bytes,s);
+
+chunk.z=
+readVarInt(bytes,s);
+
+chunk.blocks=
+readBytes(bytes,s);
+
+schem.chunks.push(chunk);
+
+}
+
+const end=
+readVarInt(bytes,s);
+
+if(end===0){
+break;
+}
+
+}
+
+log(
+"[SCHEM]",
+{
+name:schem.name,
+sizeX:schem.sizeX,
+sizeY:schem.sizeY,
+sizeZ:schem.sizeZ,
+chunks:schem.chunks.length
+}
+);
+
+return schem;
 
 }
 
@@ -581,31 +653,6 @@ return result;
 
 }
 
-async function loadSchem(file){
-
-const buffer=
-await file.arrayBuffer();
-
-const schem=
-avroType.fromBuffer(
-new Uint8Array(buffer)
-);
-
-log(
-"[SCHEM]",
-{
-name:schem.name,
-sizeX:schem.sizeX,
-sizeY:schem.sizeY,
-sizeZ:schem.sizeZ,
-chunks:schem.chunks.length
-}
-);
-
-return schem;
-
-}
-
 function indexToXYZ(index){
 
 const x=
@@ -621,6 +668,47 @@ const z=
 remain%32;
 
 return{x,y,z};
+
+}
+
+function getCenter(map){
+
+if(map.size===0){
+return BABYLON.Vector3.Zero();
+}
+
+let minX=Infinity;
+let minY=Infinity;
+let minZ=Infinity;
+
+let maxX=-Infinity;
+let maxY=-Infinity;
+let maxZ=-Infinity;
+
+for(const key of map.keys()){
+
+const s=
+key.split(",");
+
+const x=+s[0];
+const y=+s[1];
+const z=+s[2];
+
+if(x<minX)minX=x;
+if(y<minY)minY=y;
+if(z<minZ)minZ=z;
+
+if(x>maxX)maxX=x;
+if(y>maxY)maxY=y;
+if(z>maxZ)maxZ=z;
+
+}
+
+return new BABYLON.Vector3(
+(minX+maxX)/2,
+(minY+maxY)/2,
+(minZ+maxZ)/2
+);
 
 }
 
@@ -692,10 +780,8 @@ const dirs=[
 [0,0,-1]
 ];
 
-let faces=0;
+let visibleFaces=0;
 let rendered=0;
-
-const meshes=[];
 
 for(const [key,id] of blockMap){
 
@@ -706,12 +792,12 @@ if(!block){
 continue;
 }
 
-const split=
+const s=
 key.split(",");
 
-const x=+split[0];
-const y=+split[1];
-const z=+split[2];
+const x=+s[0];
+const y=+s[1];
+const z=+s[2];
 
 let visible=false;
 
@@ -728,7 +814,7 @@ if(
 ){
 
 visible=true;
-faces++;
+visibleFaces++;
 
 }
 
@@ -763,23 +849,18 @@ getMaterial(
 block.textureInfo
 );
 
-}
-
-else if(
+}else if(
 Array.isArray(
 block.textureInfo
 )
 ){
 
-const tex=
-block.textureInfo[0];
-
 box.material=
-getMaterial(tex);
+getMaterial(
+block.textureInfo[0]
+);
 
 }
-
-meshes.push(box);
 
 rendered++;
 
@@ -793,72 +874,29 @@ blockMap.size;
 document.getElementById(
 "faceCount"
 ).textContent=
-faces;
+visibleFaces;
 
 document.getElementById(
 "meshCount"
 ).textContent=
 rendered;
 
-const center=
+camera.target=
 getCenter(blockMap);
-
-camera.target=center;
 
 camera.radius=
 Math.max(
 schem.sizeX,
 schem.sizeY,
 schem.sizeZ
-)*1.4;
+)*1.5;
 
 log(
-"[RENDER DONE]",
+"[DONE]",
 {
 blocks:blockMap.size,
-meshes:rendered
+rendered
 }
-);
-
-}
-
-function getCenter(map){
-
-if(map.size===0){
-return BABYLON.Vector3.Zero();
-}
-
-let minX=Infinity;
-let minY=Infinity;
-let minZ=Infinity;
-
-let maxX=-Infinity;
-let maxY=-Infinity;
-let maxZ=-Infinity;
-
-for(const key of map.keys()){
-
-const s=
-key.split(",");
-
-const x=+s[0];
-const y=+s[1];
-const z=+s[2];
-
-if(x<minX)minX=x;
-if(y<minY)minY=y;
-if(z<minZ)minZ=z;
-
-if(x>maxX)maxX=x;
-if(y>maxY)maxY=y;
-if(z>maxZ)maxZ=z;
-
-}
-
-return new BABYLON.Vector3(
-(minX+maxX)/2,
-(minY+maxY)/2,
-(minZ+maxZ)/2
 );
 
 }
