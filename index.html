@@ -97,19 +97,7 @@ function log(...args){
 
 console.log(...args);
 
-logEl.textContent+=args.map(v=>{
-
-if(typeof v==="string"){
-return v;
-}
-
-try{
-return JSON.stringify(v,null,2);
-}catch{
-return String(v);
-}
-
-}).join(" ")+"\n";
+logEl.textContent+=args.join(" ")+"\n";
 
 logEl.scrollTop=logEl.scrollHeight;
 
@@ -143,10 +131,10 @@ scene.ambientColor=new BABYLON.Color3(
 
 const camera=new BABYLON.ArcRotateCamera(
 "cam",
-Math.PI/4,
-Math.PI/3,
-50,
-BABYLON.Vector3.Zero(),
+-Math.PI/2,
+1.1,
+80,
+new BABYLON.Vector3(16,16,16),
 scene
 );
 
@@ -158,22 +146,13 @@ new BABYLON.Vector3(0,1,0),
 scene
 );
 
-hemi.intensity=1.3;
-
-const sun=new BABYLON.DirectionalLight(
-"s",
-new BABYLON.Vector3(-1,-2,-1),
-scene
-);
-
-sun.intensity=.45;
+hemi.intensity=1.2;
 
 const textureData={};
 const textureCache=new Map();
 const materialCache=new Map();
 
 let blockData=[];
-const blockIdMap=new Map();
 
 async function extractTextures(){
 
@@ -203,6 +182,7 @@ parseInt(match[2])
 while((match=dataRegex.exec(source))!==null){
 
 const id=parseInt(match[1]);
+
 const data=match[2];
 
 if(data.startsWith("data:image")){
@@ -235,12 +215,6 @@ const res=await fetch("./blockData.json");
 
 blockData=await res.json();
 
-blockData.forEach((b,i)=>{
-
-blockIdMap.set(i,b);
-
-});
-
 log("[BLOCK DATA]",blockData.length);
 
 }
@@ -269,8 +243,9 @@ false,
 BABYLON.Texture.NEAREST_SAMPLINGMODE
 );
 
-tex.wrapU=BABYLON.Texture.CLAMP_ADDRESSMODE;
-tex.wrapV=BABYLON.Texture.CLAMP_ADDRESSMODE;
+tex.updateSamplingMode(
+BABYLON.Texture.NEAREST_SAMPLINGMODE
+);
 
 textureCache.set(name,tex);
 
@@ -278,168 +253,24 @@ return tex;
 
 }
 
-function getMaterial(name,rotate=false){
+function getMaterial(name){
 
-const key=name+(rotate?"_rot":"");
-
-if(materialCache.has(key)){
-return materialCache.get(key);
+if(materialCache.has(name)){
+return materialCache.get(name);
 }
 
 const mat=new BABYLON.StandardMaterial(
-key,
+name,
 scene
 );
 
 mat.specularColor=BABYLON.Color3.Black();
 
-mat.ambientColor=new BABYLON.Color3(
-1,
-1,
-1
-);
-
 mat.diffuseTexture=getTexture(name);
 
-if(mat.diffuseTexture){
-
-mat.diffuseTexture.updateSamplingMode(
-BABYLON.Texture.NEAREST_SAMPLINGMODE
-);
-
-mat.diffuseTexture.hasAlpha=true;
-
-if(rotate){
-
-mat.diffuseTexture.wAng=
-Math.PI/2;
-
-mat.diffuseTexture.vScale=
--1;
-
-}
-
-}
-
-materialCache.set(key,mat);
+materialCache.set(name,mat);
 
 return mat;
-
-}
-
-function readVarInt(bytes,state){
-
-let shift=0;
-let result=0;
-
-while(true){
-
-const b=bytes[state.i++];
-
-result|=(b&127)<<shift;
-
-if(!(b&128)){
-break;
-}
-
-shift+=7;
-
-}
-
-return(result>>>1)^-(result&1);
-
-}
-
-function readString(bytes,state){
-
-const len=readVarInt(bytes,state);
-
-const slice=bytes.slice(
-state.i,
-state.i+len
-);
-
-state.i+=len;
-
-return new TextDecoder().decode(slice);
-
-}
-
-function readBytes(bytes,state){
-
-const len=readVarInt(bytes,state);
-
-const slice=bytes.slice(
-state.i,
-state.i+len
-);
-
-state.i+=len;
-
-return slice;
-
-}
-
-async function loadSchem(file){
-
-const buffer=await file.arrayBuffer();
-
-const bytes=new Uint8Array(buffer);
-
-const s={i:0};
-
-s.i=4;
-
-const schem={};
-
-schem.name=readString(bytes,s);
-
-schem.x=readVarInt(bytes,s);
-schem.y=readVarInt(bytes,s);
-schem.z=readVarInt(bytes,s);
-
-schem.sizeX=readVarInt(bytes,s);
-schem.sizeY=readVarInt(bytes,s);
-schem.sizeZ=readVarInt(bytes,s);
-
-schem.chunks=[];
-
-while(true){
-
-const count=readVarInt(bytes,s);
-
-if(count===0){
-break;
-}
-
-for(let i=0;i<count;i++){
-
-const chunk={};
-
-chunk.x=readVarInt(bytes,s);
-chunk.y=readVarInt(bytes,s);
-chunk.z=readVarInt(bytes,s);
-
-chunk.blocks=readBytes(bytes,s);
-
-schem.chunks.push(chunk);
-
-}
-
-const end=readVarInt(bytes,s);
-
-if(end===0){
-break;
-}
-
-}
-
-log("[SCHEM]",{
-name:schem.name,
-chunks:schem.chunks.length
-});
-
-return schem;
 
 }
 
@@ -500,157 +331,30 @@ return result;
 
 }
 
-function indexToXYZ(index){
-
-const x=Math.floor(index/1024);
-
-const remain=index%1024;
-
-const y=Math.floor(remain/32);
-
-const z=remain%32;
-
-return{x,y,z};
-
-}
-
-function buildSchem(schem){
-
-scene.meshes.slice().forEach(mesh=>{
-
-mesh.dispose();
-
-});
-
-const blockMap=new Map();
-
-for(const chunk of schem.chunks){
-
-const decoded=decodeChunkBlocks(
-new Uint8Array(chunk.blocks)
-);
-
-for(let i=0;i<decoded.length;i++){
-
-const id=decoded[i];
-
-if(id===0){
-continue;
-}
-
-const pos=indexToXYZ(i);
-
-const worldX=chunk.x*32+pos.x;
-const worldY=chunk.y*32+pos.y;
-const worldZ=chunk.z*32+pos.z;
-
-blockMap.set(
-`${worldX},${worldY},${worldZ}`,
-id
-);
-
-}
-
-}
-
-const dirs=[
-[1,0,0],
-[-1,0,0],
-[0,1,0],
-[0,-1,0],
-[0,0,1],
-[0,0,-1]
-];
-
-let rendered=0;
-
-for(const [key,id] of blockMap){
-
-const block=blockIdMap.get(id);
-
-if(!block){
-continue;
-}
-
-const s=key.split(",");
-
-const x=+s[0];
-const y=+s[1];
-const z=+s[2];
-
-let visible=false;
-
-for(const d of dirs){
-
-const nx=x+d[0];
-const ny=y+d[1];
-const nz=z+d[2];
-
-if(!blockMap.has(`${nx},${ny},${nz}`)){
-
-visible=true;
-
-}
-
-}
-
-if(!visible){
-continue;
-}
-
-const faceUV=[];
-
-for(let i=0;i<6;i++){
-
-faceUV.push(
-new BABYLON.Vector4(
-0,
-0,
-1,
-1
-)
-);
-
-}
+function buildDebugCube(){
 
 const box=BABYLON.MeshBuilder.CreateBox(
-"b",
-{
-size:1,
-faceUV
-},
+"debug",
+{size:4},
 scene
 );
 
-box.position.set(x,y,z);
+box.position.y=4;
 
-if(typeof block.textureInfo==="string"){
-
-box.material=getMaterial(
-block.textureInfo
+const mat=new BABYLON.StandardMaterial(
+"dbg",
+scene
 );
 
-}else if(Array.isArray(block.textureInfo)){
-
-const texIndex=
-block.texturePerSide?.[0]??0;
-
-const texName=
-block.textureInfo[texIndex];
-
-box.material=
-getMaterial(
-texName,
-true
+mat.diffuseColor=new BABYLON.Color3(
+1,
+0,
+0
 );
 
-}
+box.material=mat;
 
-rendered++;
-
-}
-
-log("[DONE]",rendered);
+log("[DEBUG BOX CREATED]");
 
 }
 
@@ -660,28 +364,11 @@ document.getElementById(
 
 try{
 
-log("====================");
-
 await extractTextures();
 
 await loadBlockData();
 
-const file=
-document.getElementById(
-"schemInput"
-).files[0];
-
-if(!file){
-
-alert("schem選んで！");
-return;
-
-}
-
-const schem=
-await loadSchem(file);
-
-buildSchem(schem);
+buildDebugCube();
 
 }catch(err){
 
