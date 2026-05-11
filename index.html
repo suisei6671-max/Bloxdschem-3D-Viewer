@@ -119,8 +119,7 @@ Build Viewer
 </div>
 
 <script src="https://cdn.babylonjs.com/babylon.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/avsc/dist/avsc.min.js"></script>
-
+<script src="https://unpkg.com/avsc/browser/avsc-types.js"></script>
 <script>
 
 const logEl=document.getElementById("log");
@@ -296,7 +295,7 @@ type:"bytes"
 };
 
 const avroType=
-avro.Type.forSchema(schema);
+avsc.Type.forSchema(schema);
 
 async function extractTextures(){
 
