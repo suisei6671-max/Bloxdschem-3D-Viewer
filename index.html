@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Bloxd Viewer</title>
+<title>Bloxd Viewer Debug</title>
 <style>
 *{box-sizing:border-box}
 html,body{
@@ -32,14 +32,14 @@ image-rendering:pixelated
 position:absolute;
 left:12px;
 top:12px;
-width:420px;
+width:430px;
 max-height:calc(100% - 24px);
 overflow:auto;
-background:rgba(0,0,0,.75);
+background:rgba(0,0,0,.8);
 border-radius:16px;
 padding:14px;
-backdrop-filter:blur(8px);
-z-index:10
+z-index:10;
+backdrop-filter:blur(8px)
 }
 input,button{
 width:100%;
@@ -63,7 +63,7 @@ font-size:12px;
 line-height:1.4;
 white-space:pre-wrap;
 word-break:break-word;
-max-height:320px;
+max-height:340px;
 overflow:auto
 }
 </style>
@@ -97,7 +97,19 @@ function log(...args){
 
 console.log(...args);
 
-logEl.textContent+=args.join(" ")+"\n";
+logEl.textContent+=args.map(v=>{
+
+if(typeof v==="string"){
+return v;
+}
+
+try{
+return JSON.stringify(v,null,2);
+}catch{
+return String(v);
+}
+
+}).join(" ")+"\n";
 
 logEl.scrollTop=logEl.scrollHeight;
 
@@ -266,6 +278,12 @@ scene
 
 mat.specularColor=BABYLON.Color3.Black();
 
+mat.ambientColor=new BABYLON.Color3(
+1,
+1,
+1
+);
+
 mat.diffuseTexture=getTexture(name);
 
 materialCache.set(name,mat);
@@ -331,30 +349,255 @@ return result;
 
 }
 
-function buildDebugCube(){
+function indexToXYZ(index,sizeX,sizeY,sizeZ){
+
+const x=index%sizeX;
+
+const y=Math.floor(index/sizeX)%sizeY;
+
+const z=Math.floor(
+index/(sizeX*sizeY)
+);
+
+return{
+x,
+y,
+z
+};
+
+}
+
+async function loadSchem(file){
+
+const buffer=await file.arrayBuffer();
+
+const bytes=new Uint8Array(buffer);
+
+let offset=4;
+
+function readVarInt(){
+
+let shift=0;
+let result=0;
+
+while(true){
+
+const b=bytes[offset++];
+
+result|=(b&127)<<shift;
+
+if(!(b&128)){
+break;
+}
+
+shift+=7;
+
+}
+
+return(result>>>1)^-(result&1);
+
+}
+
+function readString(){
+
+const len=readVarInt();
+
+const slice=bytes.slice(
+offset,
+offset+len
+);
+
+offset+=len;
+
+return new TextDecoder().decode(slice);
+
+}
+
+function readBytes(){
+
+const len=readVarInt();
+
+const slice=bytes.slice(
+offset,
+offset+len
+);
+
+offset+=len;
+
+return slice;
+
+}
+
+const schem={};
+
+schem.name=readString();
+
+schem.x=readVarInt();
+schem.y=readVarInt();
+schem.z=readVarInt();
+
+schem.sizeX=readVarInt();
+schem.sizeY=readVarInt();
+schem.sizeZ=readVarInt();
+
+schem.chunks=[];
+
+while(offset<bytes.length){
+
+const chunkCount=readVarInt();
+
+if(chunkCount<=0){
+break;
+}
+
+for(let i=0;i<chunkCount;i++){
+
+const chunk={};
+
+chunk.x=readVarInt();
+chunk.y=readVarInt();
+chunk.z=readVarInt();
+
+chunk.blocks=readBytes();
+
+schem.chunks.push(chunk);
+
+}
+
+}
+
+log("[SCHEM]",{
+name:schem.name,
+sizeX:schem.sizeX,
+sizeY:schem.sizeY,
+sizeZ:schem.sizeZ,
+chunks:schem.chunks.length
+});
+
+return schem;
+
+}
+
+function clearWorld(){
+
+const meshes=scene.meshes.slice();
+
+for(const mesh of meshes){
+
+if(mesh.name!=="debug_keep"){
+
+mesh.dispose();
+
+}
+
+}
+
+}
+
+function buildSchem(schem){
+
+clearWorld();
+
+let rendered=0;
+
+for(const chunk of schem.chunks){
+
+const decoded=decodeChunkBlocks(
+new Uint8Array(chunk.blocks)
+);
+
+log(
+"[CHUNK]",
+chunk.x,
+chunk.y,
+chunk.z,
+decoded.length
+);
+
+for(let i=0;i<decoded.length;i++){
+
+const id=decoded[i];
+
+if(id===0){
+continue;
+}
+
+const pos=indexToXYZ(
+i,
+32,
+32,
+32
+);
+
+const worldX=chunk.x*32+pos.x;
+const worldY=chunk.y*32+pos.y;
+const worldZ=chunk.z*32+pos.z;
+
+const block=blockData[id];
+
+if(!block){
+continue;
+}
 
 const box=BABYLON.MeshBuilder.CreateBox(
-"debug",
-{size:4},
+"block",
+{
+size:1
+},
 scene
 );
 
-box.position.y=4;
-
-const mat=new BABYLON.StandardMaterial(
-"dbg",
-scene
+box.position.set(
+worldX,
+worldY,
+worldZ
 );
 
-mat.diffuseColor=new BABYLON.Color3(
-1,
-0,
-0
+if(typeof block.textureInfo==="string"){
+
+box.material=getMaterial(
+block.textureInfo
 );
 
-box.material=mat;
+}else if(Array.isArray(block.textureInfo)){
 
-log("[DEBUG BOX CREATED]");
+const texName=
+block.textureInfo[0];
+
+box.material=getMaterial(
+texName
+);
+
+}
+
+rendered++;
+
+if(rendered<20){
+
+log(
+"[BLOCK]",
+id,
+block.name,
+worldX,
+worldY,
+worldZ
+);
+
+}
+
+}
+
+}
+
+log("[DONE]",rendered);
+
+camera.target=new BABYLON.Vector3(
+16,
+16,
+16
+);
+
+camera.radius=80;
 
 }
 
@@ -364,11 +607,28 @@ document.getElementById(
 
 try{
 
+log("====================");
+
 await extractTextures();
 
 await loadBlockData();
 
-buildDebugCube();
+const file=
+document.getElementById(
+"schemInput"
+).files[0];
+
+if(!file){
+
+alert("schem選んで！");
+return;
+
+}
+
+const schem=
+await loadSchem(file);
+
+buildSchem(schem);
 
 }catch(err){
 
