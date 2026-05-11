@@ -2,55 +2,951 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>bloxd loader stable</title>
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+
+<title>Bloxd Schematic Viewer</title>
+
+<style>
+
+*{
+    box-sizing:border-box;
+}
+
+html,body{
+    margin:0;
+    width:100%;
+    height:100%;
+    overflow:hidden;
+
+    background:#1d1f27;
+    color:white;
+
+    font-family:sans-serif;
+}
+
+#app{
+    width:100%;
+    height:100%;
+    position:relative;
+}
+
+#noa-canvas{
+
+    position:absolute;
+
+    left:0;
+    top:0;
+
+    width:100%;
+    height:100%;
+
+    image-rendering:pixelated;
+}
+
+#ui{
+
+    position:absolute;
+
+    left:14px;
+    top:14px;
+
+    width:420px;
+
+    max-height:calc(100% - 28px);
+
+    overflow:auto;
+
+    z-index:10;
+
+    background:rgba(0,0,0,.74);
+
+    border-radius:16px;
+
+    padding:14px;
+
+    backdrop-filter:blur(10px);
+
+    border:1px solid rgba(255,255,255,.08);
+}
+
+input{
+
+    width:100%;
+
+    margin-bottom:10px;
+}
+
+button{
+
+    width:100%;
+
+    border:none;
+
+    border-radius:10px;
+
+    padding:12px;
+
+    margin-bottom:10px;
+
+    background:#4d78ff;
+
+    color:white;
+
+    font-weight:bold;
+
+    cursor:pointer;
+}
+
+button:hover{
+    filter:brightness(1.08);
+}
+
+.stat{
+
+    display:flex;
+    justify-content:space-between;
+
+    margin-bottom:6px;
+
+    font-size:13px;
+}
+
+pre{
+
+    margin:0;
+
+    background:#111;
+
+    border-radius:10px;
+
+    padding:10px;
+
+    font-size:12px;
+
+    line-height:1.45;
+
+    white-space:pre-wrap;
+    word-break:break-word;
+
+    max-height:300px;
+
+    overflow:auto;
+}
+
+</style>
 </head>
+
 <body>
 
-<h2>bloxd chunk loader (stable)</h2>
+<div id="app">
+
+    <canvas id="noa-canvas"></canvas>
+
+    <div id="ui">
+
+        <input
+            type="file"
+            id="schemInput"
+            accept=".bloxdschem"
+        >
+
+        <button id="buildBtn">
+            Build Viewer
+        </button>
+
+        <div class="stat">
+            <span>Textures</span>
+            <span id="textureCount">0</span>
+        </div>
+
+        <div class="stat">
+            <span>Blocks</span>
+            <span id="blockCount">0</span>
+        </div>
+
+        <div class="stat">
+            <span>Faces</span>
+            <span id="faceCount">0</span>
+        </div>
+
+        <div class="stat">
+            <span>Meshes</span>
+            <span id="meshCount">0</span>
+        </div>
+
+        <pre id="log"></pre>
+
+    </div>
+
+</div>
+
+<!-- Babylon -->
+<script src="https://cdn.babylonjs.com/babylon.js"></script>
+
+<!-- Bloxd chunk -->
+<script src="./76njx.4.74e4a68f.chunk.js"></script>
+
 <script>
-(async () => {
 
-  console.log("=== SAFE MODULE EXTRACT ===");
+// =====================================================
+// LOG
+// =====================================================
 
-  async function extractModules(path) {
+const logEl =
+    document.getElementById('log');
 
-    console.log("📦 loading:", path);
+function log(...args){
 
-    const text = await fetch(path).then(r => r.text());
+    console.log(...args);
 
-    console.log("🧪 preview:", text.slice(0, 120));
+    logEl.textContent +=
 
-    // modules: { ... }
-    const match = text.match(/modules\s*:\s*\{([\s\S]*?)\}\s*\}/);
+        args.map(v=>{
 
-    if (!match) {
-      console.error("❌ modules not found");
-      return {};
+            if(typeof v === 'string'){
+                return v;
+            }
+
+            try{
+                return JSON.stringify(v,null,2);
+            }catch{
+                return String(v);
+            }
+
+        }).join(' ')
+
+        + '\n';
+
+    logEl.scrollTop =
+        logEl.scrollHeight;
+}
+
+// =====================================================
+// ENGINE
+// =====================================================
+
+const canvas =
+    document.getElementById(
+        'noa-canvas'
+    );
+
+const engine =
+    new BABYLON.Engine(
+
+        canvas,
+
+        true,
+
+        {
+            antialias:false
+        }
+    );
+
+// =====================================================
+// SCENE
+// =====================================================
+
+const scene =
+    new BABYLON.Scene(engine);
+
+scene.clearColor =
+    new BABYLON.Color4(
+        0.2,
+        0.2,
+        0.3,
+        1
+    );
+
+scene.ambientColor =
+    new BABYLON.Color3(
+        0.5,
+        0.5,
+        0.5
+    );
+
+// =====================================================
+// CAMERA
+// =====================================================
+
+const camera =
+    new BABYLON.ArcRotateCamera(
+
+        'camera',
+
+        Math.PI / 4,
+
+        Math.PI / 3,
+
+        40,
+
+        BABYLON.Vector3.Zero(),
+
+        scene
+    );
+
+camera.attachControl(
+    canvas,
+    true
+);
+
+camera.wheelDeltaPercentage =
+    0.02;
+
+// =====================================================
+// LIGHT
+// =====================================================
+
+const hemi =
+    new BABYLON.HemisphericLight(
+
+        'hemi',
+
+        new BABYLON.Vector3(
+            0,
+            1,
+            0
+        ),
+
+        scene
+    );
+
+hemi.intensity = 1.3;
+
+const sun =
+    new BABYLON.DirectionalLight(
+
+        'sun',
+
+        new BABYLON.Vector3(
+            -1,
+            -2,
+            -1
+        ),
+
+        scene
+    );
+
+sun.intensity = 0.45;
+
+// =====================================================
+// STORAGE
+// =====================================================
+
+const textureData =
+    {};
+
+const textureCache =
+    new Map();
+
+const materialCache =
+    new Map();
+
+let blockData = [];
+
+// =====================================================
+// TEXTURE EXTRACTION
+// =====================================================
+
+function extractTextures(){
+
+    log('[TEXTURE] extracting');
+
+    const scripts =
+        [...document.scripts];
+
+    const chunkScript =
+        scripts.find(s=>
+
+            s.src.includes(
+                '76njx.4.'
+            )
+        );
+
+    if(!chunkScript){
+
+        throw new Error(
+            'chunk script not found'
+        );
     }
 
-    const objText = "({" + match[1] + "})";
+    const source =
+        chunkScript.textContent;
 
-    console.log("🧠 parsing modules...");
+    // =================================================
+    // BLOCK MAP
+    // =================================================
 
-    const modules = new Function("return " + objText)();
+    const blockMapRegex =
 
-    console.log("✅ extracted:", Object.keys(modules).length);
+        /1965:\s*\(.*?\)\s*=>\s*\{.*?var\s+Bb\s*=\s*(\{.*?\});/s;
 
-    return modules;
-  }
+    const blockMapMatch =
+        source.match(
+            blockMapRegex
+        );
 
-  const allModules = {
-    ...(await extractModules("./bloxd_chunk4.js")),
-    ...(await extractModules("./bloxd_chunk5.js")),
-    ...(await extractModules("./bloxd_chunk6.js")),
-    ...(await extractModules("./bloxd_chunk7.js")),
-  };
+    if(!blockMapMatch){
 
-  console.log("🎯 TOTAL:", Object.keys(allModules).length);
+        throw new Error(
+            'block map not found'
+        );
+    }
 
-  window.__mods = allModules;
+    let mapText =
+        blockMapMatch[1];
 
-})();
+    mapText =
+        mapText.replace(
+            /(\w+):/g,
+            '"$1":'
+        );
+
+    const nameToId =
+        JSON.parse(mapText);
+
+    // =================================================
+    // BASE64
+    // =================================================
+
+    const dataRegex =
+
+        /(\d+):\s*[a-zA-Z_$]+\s*=>\s*\{\s*[a-zA-Z_$]+\.exports\s*=\s*"([^"]+)"\s*\}/g;
+
+    const idToBase64 =
+        new Map();
+
+    let match;
+
+    while(
+        (match = dataRegex.exec(source))
+        !== null
+    ){
+
+        idToBase64.set(
+
+            parseInt(match[1]),
+
+            match[2]
+        );
+    }
+
+    // =================================================
+    // BUILD
+    // =================================================
+
+    let count = 0;
+
+    Object.entries(nameToId)
+
+    .forEach(([path,id])=>{
+
+        const base64 =
+            idToBase64.get(id);
+
+        if(
+            !base64
+            ||
+            !base64.startsWith(
+                'data:image'
+            )
+        ){
+            return;
+        }
+
+        const clean =
+            path
+            .replace('./','')
+            .replace('.png','');
+
+        textureData[clean] =
+            base64;
+
+        count++;
+    });
+
+    document.getElementById(
+        'textureCount'
+    ).textContent = count;
+
+    log(
+        '[TEXTURE DONE]',
+        count
+    );
+}
+
+// =====================================================
+// LAZY TEXTURE
+// =====================================================
+
+function getTexture(name){
+
+    if(textureCache.has(name)){
+        return textureCache.get(name);
+    }
+
+    const base64 =
+        textureData[name];
+
+    if(!base64){
+
+        log(
+            '[MISSING TEXTURE]',
+            name
+        );
+
+        return null;
+    }
+
+    const tex =
+        new BABYLON.Texture(
+
+            base64,
+
+            scene,
+
+            false,
+
+            false,
+
+            BABYLON.Texture.NEAREST_SAMPLINGMODE
+        );
+
+    tex.wrapU =
+        BABYLON.Texture.CLAMP_ADDRESSMODE;
+
+    tex.wrapV =
+        BABYLON.Texture.CLAMP_ADDRESSMODE;
+
+    textureCache.set(
+        name,
+        tex
+    );
+
+    return tex;
+}
+
+// =====================================================
+// MATERIAL CACHE
+// =====================================================
+
+function getMaterial(name){
+
+    if(materialCache.has(name)){
+        return materialCache.get(name);
+    }
+
+    const mat =
+        new BABYLON.StandardMaterial(
+            name,
+            scene
+        );
+
+    mat.specularColor =
+        BABYLON.Color3.Black();
+
+    mat.diffuseTexture =
+        getTexture(name);
+
+    materialCache.set(
+        name,
+        mat
+    );
+
+    return mat;
+}
+
+// =====================================================
+// LOAD BLOCK DATA
+// =====================================================
+
+async function loadBlockData(){
+
+    const res =
+        await fetch(
+            './blockData.json'
+        );
+
+    blockData =
+        await res.json();
+
+    log(
+        '[BLOCK DATA]',
+        blockData.length
+    );
+}
+
+// =====================================================
+// SCHEM LOAD
+// =====================================================
+
+async function loadSchem(file){
+
+    const text =
+        await file.text();
+
+    return JSON.parse(text);
+}
+
+// =====================================================
+// BLOCK MAP
+// =====================================================
+
+const blockNameMap =
+    new Map();
+
+function buildBlockMap(){
+
+    blockData.forEach(block=>{
+
+        blockNameMap.set(
+            block.name,
+            block
+        );
+    });
+}
+
+// =====================================================
+// FACE CULL
+// =====================================================
+
+const dirs = [
+
+    [ 1, 0, 0],
+    [-1, 0, 0],
+
+    [ 0, 1, 0],
+    [ 0,-1, 0],
+
+    [ 0, 0, 1],
+    [ 0, 0,-1]
+];
+
+// =====================================================
+// BUILD
+// =====================================================
+
+function buildSchem(schem){
+
+    log('[BUILD]');
+
+    // clear old
+
+    scene.meshes
+    .slice()
+    .forEach(mesh=>{
+
+        if(mesh.name !== 'ground'){
+            mesh.dispose();
+        }
+    });
+
+    const blocks =
+        schem.blocks
+        ||
+        schem.data
+        ||
+        [];
+
+    const map =
+        new Map();
+
+    // =================================================
+    // POSITION MAP
+    // =================================================
+
+    for(const b of blocks){
+
+        const key =
+            `${b.x},${b.y},${b.z}`;
+
+        map.set(key,b);
+    }
+
+    let renderedFaces = 0;
+    let renderedMeshes = 0;
+
+    // =================================================
+    // BUILD
+    // =================================================
+
+    for(const b of blocks){
+
+        const block =
+            blockNameMap.get(
+                b.name
+            );
+
+        if(!block){
+            continue;
+        }
+
+        const visibleFaces = [];
+
+        for(let i=0;i<6;i++){
+
+            const d = dirs[i];
+
+            const nx =
+                b.x + d[0];
+
+            const ny =
+                b.y + d[1];
+
+            const nz =
+                b.z + d[2];
+
+            const exists =
+                map.has(
+                    `${nx},${ny},${nz}`
+                );
+
+            visibleFaces.push(
+                !exists
+            );
+        }
+
+        // fully hidden
+
+        if(
+            visibleFaces.every(v=>!v)
+        ){
+            continue;
+        }
+
+        const box =
+            BABYLON.MeshBuilder.CreateBox(
+
+                'block',
+
+                {
+                    size:1,
+
+                    faceUV:[
+                        new BABYLON.Vector4(0,0,1,1),
+                        new BABYLON.Vector4(0,0,1,1),
+                        new BABYLON.Vector4(0,0,1,1),
+                        new BABYLON.Vector4(0,0,1,1),
+                        new BABYLON.Vector4(0,0,1,1),
+                        new BABYLON.Vector4(0,0,1,1)
+                    ]
+                },
+
+                scene
+            );
+
+        box.position.set(
+            b.x,
+            b.y,
+            b.z
+        );
+
+        renderedMeshes++;
+
+        // =============================================
+        // MATERIAL
+        // =============================================
+
+        if(
+            typeof block.textureInfo
+            === 'string'
+        ){
+
+            box.material =
+                getMaterial(
+                    block.textureInfo
+                );
+        }
+
+        else if(
+            Array.isArray(
+                block.textureInfo
+            )
+        ){
+
+            const multi =
+                new BABYLON.MultiMaterial(
+                    block.name,
+                    scene
+                );
+
+            for(let i=0;i<6;i++){
+
+                const texIndex =
+                    block.texturePerSide[i];
+
+                const texName =
+                    block.textureInfo[texIndex];
+
+                multi.subMaterials.push(
+
+                    getMaterial(
+                        texName
+                    )
+                );
+            }
+
+            box.material = multi;
+
+            box.subMeshes = [];
+
+            for(let i=0;i<6;i++){
+
+                new BABYLON.SubMesh(
+
+                    i,
+
+                    0,
+
+                    24,
+
+                    i * 6,
+
+                    6,
+
+                    box
+                );
+            }
+        }
+
+        // =============================================
+        // FACE DISABLE
+        // =============================================
+
+        const positions =
+            box.getVerticesData(
+                BABYLON.VertexBuffer.PositionKind
+            );
+
+        const indices =
+            box.getIndices();
+
+        const newIndices = [];
+
+        for(let face=0;face<6;face++){
+
+            if(!visibleFaces[face]){
+                continue;
+            }
+
+            renderedFaces++;
+
+            const start =
+                face * 6;
+
+            for(let i=0;i<6;i++){
+
+                newIndices.push(
+                    indices[start + i]
+                );
+            }
+        }
+
+        box.setIndices(
+            newIndices
+        );
+    }
+
+    document.getElementById(
+        'blockCount'
+    ).textContent =
+        blocks.length;
+
+    document.getElementById(
+        'faceCount'
+    ).textContent =
+        renderedFaces;
+
+    document.getElementById(
+        'meshCount'
+    ).textContent =
+        renderedMeshes;
+
+    log(
+        '[DONE]',
+        {
+            blocks:blocks.length,
+            faces:renderedFaces,
+            meshes:renderedMeshes
+        }
+    );
+}
+
+// =====================================================
+// BUTTON
+// =====================================================
+
+document.getElementById(
+    'buildBtn'
+).onclick = async ()=>{
+
+    try{
+
+        log(
+            '======================'
+        );
+
+        extractTextures();
+
+        await loadBlockData();
+
+        buildBlockMap();
+
+        const file =
+            document.getElementById(
+                'schemInput'
+            ).files[0];
+
+        if(!file){
+
+            alert(
+                'schemを選択して！'
+            );
+
+            return;
+        }
+
+        const schem =
+            await loadSchem(file);
+
+        buildSchem(schem);
+
+    }catch(err){
+
+        console.error(err);
+
+        log(
+            '[ERROR]',
+            err.message
+        );
+    }
+};
+
+// =====================================================
+// LOOP
+// =====================================================
+
+engine.runRenderLoop(()=>{
+
+    scene.render();
+});
+
+// =====================================================
+// RESIZE
+// =====================================================
+
+window.addEventListener(
+
+    'resize',
+
+    ()=>{
+
+        engine.resize();
+    }
+);
+
+log('[READY]');
+
 </script>
+
 </body>
 </html>
