@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Bloxd Viewer Debug</title>
+<title>Bloxd Viewer Ultra Debug</title>
 <style>
 *{box-sizing:border-box}
 html,body{
@@ -32,10 +32,10 @@ image-rendering:pixelated
 position:absolute;
 left:12px;
 top:12px;
-width:430px;
+width:520px;
 max-height:calc(100% - 24px);
 overflow:auto;
-background:rgba(0,0,0,.8);
+background:rgba(0,0,0,.82);
 border-radius:16px;
 padding:14px;
 z-index:10;
@@ -60,10 +60,10 @@ padding:10px;
 background:#111;
 border-radius:10px;
 font-size:12px;
-line-height:1.4;
+line-height:1.45;
 white-space:pre-wrap;
 word-break:break-word;
-max-height:340px;
+max-height:500px;
 overflow:auto
 }
 </style>
@@ -101,6 +101,7 @@ logEl.textContent+=args.map(v=>{
 
 if(typeof v==="string"){
 return v;
+
 }
 
 try{
@@ -114,6 +115,8 @@ return String(v);
 logEl.scrollTop=logEl.scrollHeight;
 
 }
+
+log("[BOOT]");
 
 const canvas=document.getElementById("noa-canvas");
 
@@ -136,17 +139,17 @@ scene.clearColor=new BABYLON.Color4(
 );
 
 scene.ambientColor=new BABYLON.Color3(
-0.5,
-0.5,
-0.5
+1,
+1,
+1
 );
 
 const camera=new BABYLON.ArcRotateCamera(
 "cam",
 -Math.PI/2,
-1.1,
-80,
-new BABYLON.Vector3(16,16,16),
+1.2,
+30,
+new BABYLON.Vector3(0,0,0),
 scene
 );
 
@@ -158,7 +161,9 @@ new BABYLON.Vector3(0,1,0),
 scene
 );
 
-hemi.intensity=1.2;
+hemi.intensity=2;
+
+log("[BABYLON READY]");
 
 const textureData={};
 const textureCache=new Map();
@@ -173,6 +178,8 @@ log("[TEXTURE] scanning");
 const res=await fetch("./76njx.4.74e4a68f.chunk.js");
 
 const source=await res.text();
+
+log("[TEXTURE] source size",source.length);
 
 const pngRegex=/"\.\/([^"]+?)\.png":(\d+)/g;
 const dataRegex=/(\d+):[^\n]*?exports\s*=\s*"([^"]+)"/g;
@@ -191,10 +198,11 @@ parseInt(match[2])
 
 }
 
+log("[TEXTURE] png refs",pngMap.size);
+
 while((match=dataRegex.exec(source))!==null){
 
 const id=parseInt(match[1]);
-
 const data=match[2];
 
 if(data.startsWith("data:image")){
@@ -204,6 +212,8 @@ base64Map.set(id,data);
 }
 
 }
+
+log("[TEXTURE] base64 refs",base64Map.size);
 
 pngMap.forEach((id,name)=>{
 
@@ -229,6 +239,8 @@ blockData=await res.json();
 
 log("[BLOCK DATA]",blockData.length);
 
+log("[BLOCK SAMPLE]",blockData.slice(0,5));
+
 }
 
 function getTexture(name){
@@ -246,6 +258,8 @@ log("[MISSING TEXTURE]",name);
 return null;
 
 }
+
+log("[TEXTURE LOAD]",name);
 
 const tex=new BABYLON.Texture(
 data,
@@ -271,6 +285,8 @@ if(materialCache.has(name)){
 return materialCache.get(name);
 }
 
+log("[MATERIAL]",name);
+
 const mat=new BABYLON.StandardMaterial(
 name,
 scene
@@ -278,13 +294,21 @@ scene
 
 mat.specularColor=BABYLON.Color3.Black();
 
-mat.ambientColor=new BABYLON.Color3(
+mat.emissiveColor=new BABYLON.Color3(
 1,
 1,
 1
 );
 
-mat.diffuseTexture=getTexture(name);
+mat.disableLighting=true;
+
+const tex=getTexture(name);
+
+if(tex){
+
+mat.diffuseTexture=tex;
+
+}
 
 materialCache.set(name,mat);
 
@@ -327,7 +351,19 @@ const result=[];
 
 let offset=0;
 
+let loops=0;
+
 while(offset<bytes.length){
+
+loops++;
+
+if(loops>100000){
+
+log("[RLE SAFETY BREAK]");
+
+break;
+
+}
 
 const countData=readULEB128(bytes,offset);
 
@@ -349,15 +385,13 @@ return result;
 
 }
 
-function indexToXYZ(index,sizeX,sizeY,sizeZ){
+function indexToXYZ(index){
 
-const x=index%sizeX;
+const x=index%32;
 
-const y=Math.floor(index/sizeX)%sizeY;
+const y=Math.floor(index/32)%32;
 
-const z=Math.floor(
-index/(sizeX*sizeY)
-);
+const z=Math.floor(index/(32*32));
 
 return{
 x,
@@ -369,9 +403,13 @@ z
 
 async function loadSchem(file){
 
+log("[SCHEM] reading",file.name);
+
 const buffer=await file.arrayBuffer();
 
 const bytes=new Uint8Array(buffer);
+
+log("[SCHEM] bytes",bytes.length);
 
 let offset=4;
 
@@ -440,11 +478,15 @@ schem.sizeX=readVarInt();
 schem.sizeY=readVarInt();
 schem.sizeZ=readVarInt();
 
+log("[SCHEM HEADER]",schem);
+
 schem.chunks=[];
 
 while(offset<bytes.length){
 
 const chunkCount=readVarInt();
+
+log("[CHUNK COUNT]",chunkCount);
 
 if(chunkCount<=0){
 break;
@@ -462,17 +504,17 @@ chunk.blocks=readBytes();
 
 schem.chunks.push(chunk);
 
-}
+log(
+"[CHUNK]",
+chunk.x,
+chunk.y,
+chunk.z,
+chunk.blocks.length
+);
 
 }
 
-log("[SCHEM]",{
-name:schem.name,
-sizeX:schem.sizeX,
-sizeY:schem.sizeY,
-sizeZ:schem.sizeZ,
-chunks:schem.chunks.length
-});
+}
 
 return schem;
 
@@ -484,11 +526,7 @@ const meshes=scene.meshes.slice();
 
 for(const mesh of meshes){
 
-if(mesh.name!=="debug_keep"){
-
 mesh.dispose();
-
-}
 
 }
 
@@ -498,6 +536,8 @@ function buildSchem(schem){
 
 clearWorld();
 
+log("[BUILD START]");
+
 let rendered=0;
 
 for(const chunk of schem.chunks){
@@ -506,12 +546,11 @@ const decoded=decodeChunkBlocks(
 new Uint8Array(chunk.blocks)
 );
 
+log("[DECODED]",decoded.length);
+
 log(
-"[CHUNK]",
-chunk.x,
-chunk.y,
-chunk.z,
-decoded.length
+"[FIRST IDS]",
+decoded.slice(0,50)
 );
 
 for(let i=0;i<decoded.length;i++){
@@ -522,22 +561,30 @@ if(id===0){
 continue;
 }
 
-const pos=indexToXYZ(
-i,
-32,
-32,
-32
-);
+const block=blockData[id];
+
+if(!block){
+
+log("[NO BLOCK]",id);
+
+continue;
+
+}
+
+const pos=indexToXYZ(i);
 
 const worldX=chunk.x*32+pos.x;
 const worldY=chunk.y*32+pos.y;
 const worldZ=chunk.z*32+pos.z;
 
-const block=blockData[id];
-
-if(!block){
-continue;
-}
+log(
+"[PLACE]",
+id,
+block.name,
+worldX,
+worldY,
+worldZ
+);
 
 const box=BABYLON.MeshBuilder.CreateBox(
 "block",
@@ -568,21 +615,28 @@ box.material=getMaterial(
 texName
 );
 
+}else{
+
+const debugMat=new BABYLON.StandardMaterial(
+"debug",
+scene
+);
+
+debugMat.diffuseColor=
+new BABYLON.Color3(
+1,
+0,
+1
+);
+
+box.material=debugMat;
+
 }
 
 rendered++;
 
-if(rendered<20){
-
-log(
-"[BLOCK]",
-id,
-block.name,
-worldX,
-worldY,
-worldZ
-);
-
+if(rendered>=20){
+break;
 }
 
 }
@@ -591,13 +645,31 @@ worldZ
 
 log("[DONE]",rendered);
 
-camera.target=new BABYLON.Vector3(
-16,
-16,
-16
+log(
+"[MESH COUNT]",
+scene.meshes.length
 );
 
-camera.radius=80;
+scene.meshes.forEach((m,i)=>{
+
+log(
+"[MESH]",
+i,
+m.name,
+m.position.x,
+m.position.y,
+m.position.z
+);
+
+});
+
+camera.target=new BABYLON.Vector3(
+0,
+0,
+0
+);
+
+camera.radius=40;
 
 }
 
@@ -607,7 +679,7 @@ document.getElementById(
 
 try{
 
-log("====================");
+log("==============");
 
 await extractTextures();
 
@@ -654,5 +726,6 @@ window.addEventListener(
 log("[READY]");
 
 </script>
+
 </body>
 </html>
