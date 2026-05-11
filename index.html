@@ -129,7 +129,7 @@ const materialCache=new Map();
 
 let blockData=[];
 
-function extractTextures(){
+async function extractTextures(){
 
 log("[TEXTURE] scanning");
 
@@ -143,67 +143,9 @@ if(!chunkScript){
 throw new Error("chunk script not found");
 }
 
-const source=chunkScript.textContent;
+const res=await fetch(chunkScript.src);
 
-const blockMapRegex=
-/var\s+[A-Za-z0-9_$]+\s*=\s*(\{[\s\S]*?"\.\/.*?png":[\s\S]*?\})/;
-
-const blockMapMatch=
-source.match(blockMapRegex);
-
-if(!blockMapMatch){
-throw new Error("block map not found");
-}
-
-let mapText=blockMapMatch[1];
-
-mapText=mapText.replace(
-/(\.\/.*?png):/g,
-(match)=>`"${match.slice(0,-1)}":`
-);
-
-const nameToId=JSON.parse(mapText);
-
-const dataRegex=
-/(\d+):\s*[A-Za-z0-9_$]+\s*=>\s*\{\s*[A-Za-z0-9_$]+\.exports\s*=\s*"([^"]+)"\s*\}/g;
-
-const idToBase64=new Map();
-
-let match;
-
-while((match=dataRegex.exec(source))!==null){
-
-idToBase64.set(
-parseInt(match[1]),
-match[2]
-);
-
-}
-
-let count=0;
-
-Object.entries(nameToId).forEach(([path,id])=>{
-
-const base64=idToBase64.get(id);
-
-if(!base64) return;
-if(!base64.startsWith("data:image")) return;
-
-const clean=path
-.replace("./","")
-.replace(".png","");
-
-textureData[clean]=base64;
-
-count++;
-
-});
-
-document.getElementById("textureCount").textContent=count;
-
-log("[TEXTURE DONE]",count);
-
-}
+const source=await res.text();
 
 function getTexture(name){
 
@@ -592,8 +534,7 @@ try{
 
 log("====================");
 
-extractTextures();
-
+await extractTextures();
 await loadBlockData();
 
 buildBlockMap();
