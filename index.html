@@ -408,9 +408,7 @@ function extractTextures(){
     // BASE64
     // =================================================
 
-    const dataRegex =
-
-        /(\d+):\s*[a-zA-Z_$]+\s*=>\s*\{\s*[a-zA-Z_$]+\.exports\s*=\s*"([^"]+)"\s*\}/g;
+    const dataRegex = /(\d+):\s*[a-zA-Z_$]+\s*=>\s*\{\s*[a-zA-Z_$]+\.exports\s*=\s*"([^"]+)"\s*\}/g;
 
     const idToBase64 =
         new Map();
