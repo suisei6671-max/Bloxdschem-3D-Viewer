@@ -376,10 +376,7 @@ function extractTextures(){
     // BLOCK MAP
     // =================================================
 
-    const blockMapRegex =
-
-        /1965:\s*\(.*?\)\s*=>\s*\{.*?var\s+Bb\s*=\s*(\{.*?\});/s;
-
+const blockMapRegex = /var\s+[A-Za-z0-9_$]+\s*=\s*(\{[\s\S]*?"\.\/.*?png":[\s\S]*?\})/;
     const blockMapMatch =
         source.match(
             blockMapRegex
