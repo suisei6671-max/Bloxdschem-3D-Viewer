@@ -3,13 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Bloxd Viewer v0.8</title>
+<title>Bloxd Viewer</title>
 
 <style>
-*{
-box-sizing:border-box;
-}
-
+*{box-sizing:border-box}
 html,body{
 margin:0;
 width:100%;
@@ -19,89 +16,71 @@ background:#1d1f27;
 font-family:sans-serif;
 color:white;
 }
-
-#app{
-position:relative;
-width:100%;
-height:100%;
-}
-
 #renderCanvas{
-position:absolute;
-left:0;
-top:0;
 width:100%;
 height:100%;
+display:block;
 image-rendering:pixelated;
 }
-
 #ui{
-position:absolute;
-left:12px;
-top:12px;
-width:560px;
-max-height:calc(100% - 24px);
+position:fixed;
+left:10px;
+top:10px;
+width:520px;
+max-height:95vh;
 overflow:auto;
 background:rgba(0,0,0,.88);
-border-radius:16px;
 padding:14px;
-z-index:100;
+border-radius:14px;
+z-index:10;
 }
-
 button,input{
 width:100%;
 margin-bottom:10px;
 }
-
 button{
 border:none;
-border-radius:10px;
 padding:12px;
+border-radius:10px;
 background:#4d78ff;
 color:white;
 font-weight:bold;
 cursor:pointer;
 }
-
 pre{
 margin:0;
 padding:10px;
 background:#111;
 border-radius:10px;
 font-size:12px;
-line-height:1.45;
 white-space:pre-wrap;
 word-break:break-word;
-max-height:520px;
+max-height:420px;
 overflow:auto;
 }
 </style>
 </head>
 <body>
 
-<div id="app">
-
 <canvas id="renderCanvas"></canvas>
 
 <div id="ui">
 
 <div style="font-size:24px;font-weight:bold;margin-bottom:8px">
-Bloxd Viewer v0.8
+Bloxd Viewer
 </div>
 
-<div style="opacity:.7;margin-bottom:14px">
-top/bottom/front/back rotated 90°
+<div style="opacity:.7;margin-bottom:12px">
+FIX: all non-side faces rotated right 90°
 </div>
 
 <input type="file" id="schemInput" accept=".bloxdschem">
 
 <button id="buildBtn">
-Build Viewer
+BUILD
 </button>
 
 <pre id="log"></pre>
-
-</div>
 
 </div>
 
@@ -109,63 +88,27 @@ Build Viewer
 
 <script>
 
-const VERSION="0.8";
-
 const logEl=document.getElementById("log");
 
-function log(...args){
-
-console.log(...args);
-
-logEl.textContent+=args.map(v=>{
-
-if(typeof v==="string"){
-return v;
-}
-
-try{
-return JSON.stringify(v,null,2);
-}catch{
-return String(v);
-}
-
-}).join(" ")+"\n";
-
+function log(...a){
+console.log(...a);
+logEl.textContent+=a.join(" ")+"\n";
 logEl.scrollTop=logEl.scrollHeight;
-
 }
-
-log("[BOOT]");
-log("[VERSION]",VERSION);
 
 const canvas=document.getElementById("renderCanvas");
 
-const engine=new BABYLON.Engine(
-canvas,
-true,
-{
+const engine=new BABYLON.Engine(canvas,true,{
 antialias:false,
 preserveDrawingBuffer:true
-}
-);
+});
 
 const scene=new BABYLON.Scene(engine);
 
-scene.clearColor=new BABYLON.Color4(
-0.2,
-0.2,
-0.3,
-1
-);
-
-scene.ambientColor=new BABYLON.Color3(
-1,
-1,
-1
-);
+scene.clearColor=new BABYLON.Color4(.2,.2,.3,1);
 
 const camera=new BABYLON.ArcRotateCamera(
-"camera",
+"cam",
 -Math.PI/2,
 1.2,
 30,
@@ -187,16 +130,15 @@ const textureData={};
 const textureCache=new Map();
 const materialCache=new Map();
 
-let blockData=[];
 let blockMap={};
 
 async function extractTextures(){
 
-log("[TEXTURE] scanning");
+log("[TEXTURE]");
 
 const res=await fetch("./76njx.4.74e4a68f.chunk.js");
 
-const source=await res.text();
+const src=await res.text();
 
 const pngRegex=/"\.\/([^"]+?)\.png":(\d+)/g;
 const dataRegex=/(\d+):[^\n]*?exports\s*=\s*"([^"]+)"/g;
@@ -204,22 +146,22 @@ const dataRegex=/(\d+):[^\n]*?exports\s*=\s*"([^"]+)"/g;
 const pngMap=new Map();
 const base64Map=new Map();
 
-let match;
+let m;
 
-while((match=pngRegex.exec(source))!==null){
+while((m=pngRegex.exec(src))!==null){
 
 pngMap.set(
-match[1],
-parseInt(match[2])
+m[1],
+parseInt(m[2])
 );
 
 }
 
-while((match=dataRegex.exec(source))!==null){
+while((m=dataRegex.exec(src))!==null){
 
-const id=parseInt(match[1]);
+const id=parseInt(m[1]);
 
-const data=match[2];
+const data=m[2];
 
 if(data.startsWith("data:image")){
 
@@ -241,7 +183,7 @@ textureData[name]=data;
 
 });
 
-log("[TEXTURE DONE]",Object.keys(textureData).length);
+log("[TEXTURES]",Object.keys(textureData).length);
 
 }
 
@@ -249,27 +191,19 @@ async function loadBlockData(){
 
 const res=await fetch("./blockData.json");
 
-blockData=await res.json();
+const json=await res.json();
 
 blockMap={};
 
-for(let i=0;i<blockData.length;i++){
+for(const entry of json){
 
-const entry=blockData[i];
-
-if(Array.isArray(entry)){
-
-blockMap[parseInt(entry[0])]=entry[1];
-
-}else{
-
-blockMap[i]=entry;
+blockMap[
+parseInt(entry[0])
+]=entry[1];
 
 }
 
-}
-
-log("[BLOCK DATA]",Object.keys(blockMap).length);
+log("[BLOCKS]",Object.keys(blockMap).length);
 
 }
 
@@ -285,10 +219,8 @@ const data=textureData[name];
 
 if(!data){
 
-log("[MISSING TEXTURE]",name);
-
+log("[MISSING]",name);
 return null;
-
 }
 
 const tex=new BABYLON.Texture(
@@ -309,9 +241,9 @@ return tex;
 
 }
 
-async function makeRotatedTexture(name,deg){
+async function createRotatedTexture(name,deg){
 
-const key=name+"_rot_"+deg;
+const key=name+"_r"+deg;
 
 if(textureCache.has(key)){
 
@@ -335,30 +267,20 @@ img.src=src;
 
 img.onload=()=>{
 
-const cvs=document.createElement("canvas");
+const c=document.createElement("canvas");
 
-cvs.width=16;
-cvs.height=16;
+c.width=16;
+c.height=16;
 
-const ctx=cvs.getContext("2d");
+const ctx=c.getContext("2d");
 
 ctx.imageSmoothingEnabled=false;
-
-ctx.save();
 
 ctx.translate(8,8);
 
 ctx.rotate(deg*Math.PI/180);
 
-ctx.drawImage(
-img,
--8,
--8,
-16,
-16
-);
-
-ctx.restore();
+ctx.drawImage(img,-8,-8,16,16);
 
 const tex=new BABYLON.DynamicTexture(
 key,
@@ -375,9 +297,7 @@ const tctx=tex.getContext();
 
 tctx.imageSmoothingEnabled=false;
 
-tctx.clearRect(0,0,16,16);
-
-tctx.drawImage(cvs,0,0);
+tctx.drawImage(c,0,0);
 
 tex.update();
 
@@ -395,56 +315,54 @@ resolve(tex);
 
 }
 
-function getMaterial(name){
+async function createFaceMaterial(texName,rot){
 
-if(materialCache.has(name)){
+const key=texName+"_mat_"+rot;
 
-return materialCache.get(name);
+if(materialCache.has(key)){
+
+return materialCache.get(key);
+
+}
+
+let tex;
+
+if(rot!==0){
+
+tex=await createRotatedTexture(texName,rot);
+
+}else{
+
+tex=getTexture(texName);
 
 }
 
 const mat=new BABYLON.StandardMaterial(
-name,
+key,
 scene
 );
 
+mat.diffuseTexture=tex;
+
 mat.specularColor=BABYLON.Color3.Black();
 
-mat.emissiveColor=new BABYLON.Color3(
-1,
-1,
-1
-);
+mat.emissiveColor=new BABYLON.Color3(1,1,1);
 
 mat.disableLighting=true;
 
-const tex=getTexture(name);
-
-if(tex){
-
-mat.diffuseTexture=tex;
-
-}
-
-materialCache.set(name,mat);
+materialCache.set(key,mat);
 
 return mat;
 
 }
 
-function clearWorld(){
+function clearScene(){
 
-const meshes=scene.meshes.slice();
-
-for(const mesh of meshes){
-
-mesh.dispose();
+scene.meshes.slice().forEach(m=>m.dispose());
 
 }
 
-}
-
-function readULEB128(bytes,state){
+function readULEB(bytes,state){
 
 let result=0;
 let shift=0;
@@ -455,11 +373,7 @@ const byte=bytes[state.offset++];
 
 result|=(byte&127)<<shift;
 
-if((byte&128)===0){
-
-break;
-
-}
+if((byte&128)===0)break;
 
 shift+=7;
 
@@ -469,61 +383,47 @@ return result;
 
 }
 
-function decodeChunkBlocks(bytes){
+function decodeBlocks(bytes){
 
-const result=new Uint16Array(32*32*32);
+const arr=new Uint16Array(32*32*32);
 
-const state={
-offset:0
-};
+const state={offset:0};
 
 while(state.offset<bytes.length){
 
-const index=readULEB128(bytes,state);
+const index=readULEB(bytes,state);
 
-if(state.offset>=bytes.length){
+if(state.offset>=bytes.length)break;
 
-break;
+const id=readULEB(bytes,state);
 
-}
+if(index<arr.length){
 
-const blockId=readULEB128(bytes,state);
-
-if(index>=result.length){
-
-continue;
+arr[index]=id;
 
 }
 
-result[index]=blockId;
+}
+
+return arr;
 
 }
 
-return result;
-
-}
-
-function indexToXYZ(index){
-
-const x=index%32;
-
-const y=Math.floor(index/32)%32;
-
-const z=Math.floor(index/(32*32));
+function idxToXYZ(i){
 
 return{
-x,
-y,
-z
+x:i%32,
+y:Math.floor(i/32)%32,
+z:Math.floor(i/1024)
 };
 
 }
 
-async function loadSchem(file){
+async function parseSchem(file){
 
-const buffer=await file.arrayBuffer();
+const buf=await file.arrayBuffer();
 
-const bytes=new Uint8Array(buffer);
+const bytes=new Uint8Array(buf);
 
 let offset=4;
 
@@ -538,11 +438,7 @@ const b=bytes[offset++];
 
 result|=(b&127)<<shift;
 
-if(!(b&128)){
-
-break;
-
-}
+if(!(b&128))break;
 
 shift+=7;
 
@@ -556,10 +452,7 @@ function readString(){
 
 const len=readVarInt();
 
-const slice=bytes.slice(
-offset,
-offset+len
-);
+const slice=bytes.slice(offset,offset+len);
 
 offset+=len;
 
@@ -571,10 +464,7 @@ function readBytes(){
 
 const len=readVarInt();
 
-const slice=bytes.slice(
-offset,
-offset+len
-);
+const slice=bytes.slice(offset,offset+len);
 
 offset+=len;
 
@@ -598,25 +488,18 @@ schem.chunks=[];
 
 while(offset<bytes.length){
 
-const chunkCount=readVarInt();
+const count=readVarInt();
 
-if(chunkCount<=0){
+if(count<=0)break;
 
-break;
+for(let i=0;i<count;i++){
 
-}
-
-for(let i=0;i<chunkCount;i++){
-
-const chunk={};
-
-chunk.x=readVarInt();
-chunk.y=readVarInt();
-chunk.z=readVarInt();
-
-chunk.blocks=readBytes();
-
-schem.chunks.push(chunk);
+schem.chunks.push({
+x:readVarInt(),
+y:readVarInt(),
+z:readVarInt(),
+blocks:readBytes()
+});
 
 }
 
@@ -626,40 +509,30 @@ return schem;
 
 }
 
-async function buildBlock(
-block,
-worldX,
-worldY,
-worldZ
-){
+async function buildBlock(block,x,y,z){
 
-const box=BABYLON.MeshBuilder.CreateBox(
-"block",
-{
-size:1
-},
+const mesh=BABYLON.MeshBuilder.CreateBox(
+"b",
+{size:1},
 scene
 );
 
-box.position.set(
-worldX,
-worldY,
-worldZ
-);
+mesh.position.set(x,y,z);
 
 if(typeof block.textureInfo==="string"){
 
-box.material=getMaterial(
-block.textureInfo
+const mat=await createFaceMaterial(
+block.textureInfo,
+0
 );
+
+mesh.material=mat;
 
 return;
 
 }
 
-if(Array.isArray(block.textureInfo)){
-
-const multiMat=new BABYLON.MultiMaterial(
+const multi=new BABYLON.MultiMaterial(
 "multi",
 scene
 );
@@ -677,7 +550,7 @@ Bloxd:
 [left,right,top,bottom,front,back]
 */
 
-const map=[
+const faceMap=[
 4,
 5,
 1,
@@ -687,11 +560,13 @@ const map=[
 ];
 
 /*
+ユーザー修正:
 top/bottom/front/back
-だけ90°
+を右90°
+left/rightはそのまま
 */
 
-const SIDE_ROTATION_MAP={
+const rotationMap={
 0:90,
 1:90,
 2:0,
@@ -702,7 +577,7 @@ const SIDE_ROTATION_MAP={
 
 for(let face=0;face<6;face++){
 
-const bloxdFace=map[face];
+const bloxdFace=faceMap[face];
 
 const texIndex=
 block.texturePerSide?.[
@@ -714,69 +589,49 @@ block.textureInfo[
 texIndex
 ];
 
-const rotate=
-SIDE_ROTATION_MAP[face] ?? 0;
+const rot=
+rotationMap[face] ?? 0;
 
-let mat;
-
-if(rotate!==0){
-
-const rotTex=
-await makeRotatedTexture(
-texName,
-rotate
-);
-
-mat=new BABYLON.StandardMaterial(
-texName+"_rot_"+rotate,
-scene
-);
-
-mat.diffuseTexture=rotTex;
-
-mat.specularColor=
-BABYLON.Color3.Black();
-
-mat.emissiveColor=
-new BABYLON.Color3(1,1,1);
-
-mat.disableLighting=true;
-
-}else{
-
-mat=getMaterial(texName);
-
-}
-
-multiMat.subMaterials.push(mat);
-
-}
-
-box.material=multiMat;
-
-const verticesCount=
-box.getTotalVertices();
-
-box.subMeshes=[];
-
-let indexStart=0;
-
-for(let face=0;face<6;face++){
-
-const subMesh=new BABYLON.SubMesh(
+log(
+"[FACE]",
 face,
-0,
-verticesCount,
-indexStart,
-6,
-box
+texName,
+"ROT",
+rot
 );
 
-box.subMeshes.push(subMesh);
+const mat=
+await createFaceMaterial(
+texName,
+rot
+);
 
-indexStart+=6;
+multi.subMaterials.push(mat);
 
 }
+
+mesh.material=multi;
+
+const vc=mesh.getTotalVertices();
+
+mesh.subMeshes=[];
+
+let idx=0;
+
+for(let i=0;i<6;i++){
+
+mesh.subMeshes.push(
+new BABYLON.SubMesh(
+i,
+0,
+vc,
+idx,
+6,
+mesh
+)
+);
+
+idx+=6;
 
 }
 
@@ -784,13 +639,13 @@ indexStart+=6;
 
 async function buildSchem(schem){
 
-clearWorld();
+clearScene();
 
-let rendered=0;
+let count=0;
 
 for(const chunk of schem.chunks){
 
-const decoded=decodeChunkBlocks(
+const decoded=decodeBlocks(
 new Uint8Array(chunk.blocks)
 );
 
@@ -798,48 +653,34 @@ for(let i=0;i<decoded.length;i++){
 
 let id=decoded[i];
 
-if(id===0){
-
-continue;
-
-}
+if(id===0)continue;
 
 id=id-1;
 
 const block=blockMap[id];
 
-if(!block){
+if(!block)continue;
 
-continue;
-
-}
-
-const pos=indexToXYZ(i);
-
-const worldX=chunk.x*32+pos.x;
-const worldY=chunk.y*32+pos.y;
-const worldZ=chunk.z*32+pos.z;
+const pos=idxToXYZ(i);
 
 await buildBlock(
 block,
-worldX,
-worldY,
-worldZ
+chunk.x*32+pos.x,
+chunk.y*32+pos.y,
+chunk.z*32+pos.z
 );
 
-rendered++;
+count++;
 
 }
 
 }
 
-log("[DONE]",rendered);
+log("[DONE]",count);
 
 }
 
-document.getElementById(
-"buildBtn"
-).onclick=async()=>{
+document.getElementById("buildBtn").onclick=async()=>{
 
 try{
 
@@ -848,27 +689,25 @@ await extractTextures();
 await loadBlockData();
 
 const file=
-document.getElementById(
-"schemInput"
-).files[0];
+document.getElementById("schemInput").files[0];
 
 if(!file){
 
-alert("schem選んで！");
+alert("schem選択！");
 return;
-
 }
 
-const schem=
-await loadSchem(file);
+const schem=await parseSchem(file);
+
+log("[SCHEM]",schem.name);
 
 await buildSchem(schem);
 
-}catch(err){
+}catch(e){
 
-console.error(err);
+console.error(e);
 
-log("[ERROR]",err.message);
+log("[ERROR]",e.message);
 
 }
 
