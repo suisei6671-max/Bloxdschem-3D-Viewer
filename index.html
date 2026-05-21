@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Bloxd Viewer v0.7</title>
+<title>Bloxd Viewer v0.8</title>
 
 <style>
 *{
@@ -86,11 +86,11 @@ overflow:auto;
 <div id="ui">
 
 <div style="font-size:24px;font-weight:bold;margin-bottom:8px">
-Bloxd Viewer v0.7
+Bloxd Viewer v0.8
 </div>
 
 <div style="opacity:.7;margin-bottom:14px">
-All side textures rotated correctly
+top/bottom/front/back rotated 90°
 </div>
 
 <input type="file" id="schemInput" accept=".bloxdschem">
@@ -109,7 +109,7 @@ Build Viewer
 
 <script>
 
-const VERSION="0.7";
+const VERSION="0.8";
 
 const logEl=document.getElementById("log");
 
@@ -184,13 +184,10 @@ scene
 light.intensity=2;
 
 const textureData={};
-
 const textureCache=new Map();
-
 const materialCache=new Map();
 
 let blockData=[];
-
 let blockMap={};
 
 async function extractTextures(){
@@ -201,14 +198,10 @@ const res=await fetch("./76njx.4.74e4a68f.chunk.js");
 
 const source=await res.text();
 
-log("[TEXTURE] source size",source.length);
-
 const pngRegex=/"\.\/([^"]+?)\.png":(\d+)/g;
-
 const dataRegex=/(\d+):[^\n]*?exports\s*=\s*"([^"]+)"/g;
 
 const pngMap=new Map();
-
 const base64Map=new Map();
 
 let match;
@@ -454,7 +447,6 @@ mesh.dispose();
 function readULEB128(bytes,state){
 
 let result=0;
-
 let shift=0;
 
 while(true){
@@ -529,20 +521,15 @@ z
 
 async function loadSchem(file){
 
-log("[SCHEM] reading",file.name);
-
 const buffer=await file.arrayBuffer();
 
 const bytes=new Uint8Array(buffer);
-
-log("[SCHEM] bytes",bytes.length);
 
 let offset=4;
 
 function readVarInt(){
 
 let shift=0;
-
 let result=0;
 
 while(true){
@@ -607,8 +594,6 @@ schem.sizeX=readVarInt();
 schem.sizeY=readVarInt();
 schem.sizeZ=readVarInt();
 
-log("[SCHEM HEADER]",schem);
-
 schem.chunks=[];
 
 while(offset<bytes.length){
@@ -636,8 +621,6 @@ schem.chunks.push(chunk);
 }
 
 }
-
-log("[CHUNKS]",schem.chunks.length);
 
 return schem;
 
@@ -704,17 +687,17 @@ const map=[
 ];
 
 /*
-front/back/right/left
-全部右90°
+top/bottom/front/back
+だけ90°
 */
 
 const SIDE_ROTATION_MAP={
 0:90,
 1:90,
-2:90,
-3:90,
-4:0,
-5:0
+2:0,
+3:0,
+4:90,
+5:90
 };
 
 for(let face=0;face<6;face++){
@@ -761,9 +744,7 @@ mat.disableLighting=true;
 
 }else{
 
-mat=getMaterial(
-texName
-);
+mat=getMaterial(texName);
 
 }
 
@@ -797,24 +778,7 @@ indexStart+=6;
 
 }
 
-return;
-
 }
-
-const debugMat=
-new BABYLON.StandardMaterial(
-"debug",
-scene
-);
-
-debugMat.diffuseColor=
-new BABYLON.Color3(
-1,
-0,
-1
-);
-
-box.material=debugMat;
 
 }
 
@@ -822,27 +786,12 @@ async function buildSchem(schem){
 
 clearWorld();
 
-log("[BUILD START]");
-
 let rendered=0;
 
 for(const chunk of schem.chunks){
 
-log(
-"[CHUNK]",
-chunk.x,
-chunk.y,
-chunk.z,
-chunk.blocks.length
-);
-
 const decoded=decodeChunkBlocks(
 new Uint8Array(chunk.blocks)
-);
-
-log(
-"[DECODED]",
-decoded.length
 );
 
 for(let i=0;i<decoded.length;i++){
@@ -855,17 +804,11 @@ continue;
 
 }
 
-/*
-Bloxd ID correction
-*/
-
 id=id-1;
 
 const block=blockMap[id];
 
 if(!block){
-
-log("[UNKNOWN BLOCK]",id);
 
 continue;
 
@@ -886,71 +829,11 @@ worldZ
 
 rendered++;
 
-if(rendered<10){
-
-log(
-"[PLACE]",
-id,
-block.name,
-worldX,
-worldY,
-worldZ
-);
-
-}
-
 }
 
 }
 
 log("[DONE]",rendered);
-
-log("[MESH COUNT]",scene.meshes.length);
-
-if(scene.meshes.length>0){
-
-let minX=Infinity;
-let minY=Infinity;
-let minZ=Infinity;
-
-let maxX=-Infinity;
-let maxY=-Infinity;
-let maxZ=-Infinity;
-
-for(const mesh of scene.meshes){
-
-minX=Math.min(minX,mesh.position.x);
-minY=Math.min(minY,mesh.position.y);
-minZ=Math.min(minZ,mesh.position.z);
-
-maxX=Math.max(maxX,mesh.position.x);
-maxY=Math.max(maxY,mesh.position.y);
-maxZ=Math.max(maxZ,mesh.position.z);
-
-}
-
-const center=new BABYLON.Vector3(
-(minX+maxX)/2,
-(minY+maxY)/2,
-(minZ+maxZ)/2
-);
-
-const size=Math.max(
-maxX-minX,
-maxY-minY,
-maxZ-minZ
-);
-
-camera.target=center;
-
-camera.radius=Math.max(
-8,
-size*2
-);
-
-log("[CAMERA TARGET]",center);
-
-}
 
 }
 
@@ -959,8 +842,6 @@ document.getElementById(
 ).onclick=async()=>{
 
 try{
-
-log("====================");
 
 await extractTextures();
 
@@ -1001,11 +882,8 @@ scene.render();
 
 window.addEventListener(
 "resize",
-()=>{
-
-engine.resize();
-
-});
+()=>engine.resize()
+);
 
 log("[READY]");
 
