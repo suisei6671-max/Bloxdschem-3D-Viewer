@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Bloxd Viewer Ultra Debug</title>
+<title>Bloxd Schem Viewer</title>
 <style>
 *{box-sizing:border-box}
 html,body{
@@ -20,7 +20,7 @@ position:relative;
 width:100%;
 height:100%
 }
-#noa-canvas{
+#renderCanvas{
 position:absolute;
 left:0;
 top:0;
@@ -35,13 +35,12 @@ top:12px;
 width:520px;
 max-height:calc(100% - 24px);
 overflow:auto;
-background:rgba(0,0,0,.82);
+background:rgba(0,0,0,.85);
 border-radius:16px;
 padding:14px;
-z-index:10;
-backdrop-filter:blur(8px)
+z-index:10
 }
-input,button{
+button,input{
 width:100%;
 margin-bottom:10px
 }
@@ -63,7 +62,7 @@ font-size:12px;
 line-height:1.45;
 white-space:pre-wrap;
 word-break:break-word;
-max-height:500px;
+max-height:520px;
 overflow:auto
 }
 </style>
@@ -72,7 +71,7 @@ overflow:auto
 
 <div id="app">
 
-<canvas id="noa-canvas"></canvas>
+<canvas id="renderCanvas"></canvas>
 
 <div id="ui">
 
@@ -91,43 +90,255 @@ Build Viewer
 
 <script>
 
-function decodeChunkBlocks(bytes){
+const logEl=document.getElementById("log");
 
-log("[RAW BYTES]",Array.from(bytes));
+function log(...args){
 
-/*
-Explosive の blocks:
-[128,128,128,128,1,146,2,0,0,0]
+console.log(...args);
 
-今まで:
-[count][id]
+logEl.textContent+=args.map(v=>{
 
-だったけど違う。
+if(typeof v==="string"){
+return v;
+}
 
-実際は:
+try{
+return JSON.stringify(v,null,2);
+}catch{
+return String(v);
+}
 
-first = position
-second = block id
+}).join(" ")+"\n";
 
-っぽい。
-*/
+logEl.scrollTop=logEl.scrollHeight;
 
-const result=new Uint16Array(32*32*32);
+}
 
-let offset=0;
+log("[BOOT]");
 
-function readVarInt(){
+const canvas=document.getElementById("renderCanvas");
 
-let num=0;
+const engine=new BABYLON.Engine(
+canvas,
+true,
+{
+antialias:false,
+preserveDrawingBuffer:true
+}
+);
+
+const scene=new BABYLON.Scene(engine);
+
+scene.clearColor=new BABYLON.Color4(
+0.2,
+0.2,
+0.3,
+1
+);
+
+scene.ambientColor=new BABYLON.Color3(
+1,
+1,
+1
+);
+
+const camera=new BABYLON.ArcRotateCamera(
+"cam",
+-Math.PI/2,
+1.2,
+30,
+new BABYLON.Vector3(0,0,0),
+scene
+);
+
+camera.attachControl(canvas,true);
+
+const light=new BABYLON.HemisphericLight(
+"light",
+new BABYLON.Vector3(0,1,0),
+scene
+);
+
+light.intensity=2;
+
+log("[BABYLON READY]");
+
+const textureData={};
+const textureCache=new Map();
+const materialCache=new Map();
+
+let blockData=[];
+
+async function extractTextures(){
+
+log("[TEXTURE] scanning");
+
+const res=await fetch("./76njx.4.74e4a68f.chunk.js");
+
+const source=await res.text();
+
+log("[TEXTURE] source size",source.length);
+
+const pngRegex=/"\.\/([^"]+?)\.png":(\d+)/g;
+const dataRegex=/(\d+):[^\n]*?exports\s*=\s*"([^"]+)"/g;
+
+const pngMap=new Map();
+const base64Map=new Map();
+
+let match;
+
+while((match=pngRegex.exec(source))!==null){
+
+pngMap.set(
+match[1],
+parseInt(match[2])
+);
+
+}
+
+log("[TEXTURE] png refs",pngMap.size);
+
+while((match=dataRegex.exec(source))!==null){
+
+const id=parseInt(match[1]);
+
+const data=match[2];
+
+if(data.startsWith("data:image")){
+
+base64Map.set(id,data);
+
+}
+
+}
+
+log("[TEXTURE] base64 refs",base64Map.size);
+
+pngMap.forEach((id,name)=>{
+
+const data=base64Map.get(id);
+
+if(data){
+
+textureData[name]=data;
+
+}
+
+});
+
+log("[TEXTURE DONE]",Object.keys(textureData).length);
+
+}
+
+async function loadBlockData(){
+
+const res=await fetch("./blockData.json");
+
+blockData=await res.json();
+
+log("[BLOCK DATA]",blockData.length);
+
+log("[BLOCK SAMPLE]",blockData.slice(0,5));
+
+}
+
+function getTexture(name){
+
+if(textureCache.has(name)){
+return textureCache.get(name);
+}
+
+const data=textureData[name];
+
+if(!data){
+
+log("[MISSING TEXTURE]",name);
+
+return null;
+
+}
+
+log("[TEXTURE LOAD]",name);
+
+const tex=new BABYLON.Texture(
+data,
+scene,
+false,
+false,
+BABYLON.Texture.NEAREST_SAMPLINGMODE
+);
+
+tex.updateSamplingMode(
+BABYLON.Texture.NEAREST_SAMPLINGMODE
+);
+
+textureCache.set(name,tex);
+
+return tex;
+
+}
+
+function getMaterial(name){
+
+if(materialCache.has(name)){
+return materialCache.get(name);
+}
+
+log("[MATERIAL]",name);
+
+const mat=new BABYLON.StandardMaterial(
+name,
+scene
+);
+
+mat.specularColor=BABYLON.Color3.Black();
+
+mat.emissiveColor=new BABYLON.Color3(
+1,
+1,
+1
+);
+
+mat.disableLighting=true;
+
+const tex=getTexture(name);
+
+if(tex){
+
+mat.diffuseTexture=tex;
+
+}
+
+materialCache.set(name,mat);
+
+return mat;
+
+}
+
+function clearWorld(){
+
+const meshes=scene.meshes.slice();
+
+for(const mesh of meshes){
+
+mesh.dispose();
+
+}
+
+}
+
+function readULEB128(bytes,state){
+
+let result=0;
 let shift=0;
 
 while(true){
 
-const b=bytes[offset++];
+const byte=bytes[state.offset++];
 
-num|=(b&127)<<shift;
+result|=(byte&127)<<shift;
 
-if((b&128)===0){
+if((byte&128)===0){
 break;
 }
 
@@ -135,21 +346,31 @@ shift+=7;
 
 }
 
-return num;
+return result;
 
 }
+
+function decodeChunkBlocks(bytes){
+
+log("[RAW BYTES]",Array.from(bytes));
+
+const result=new Uint16Array(32*32*32);
+
+const state={
+offset:0
+};
 
 let placed=0;
 
-while(offset<bytes.length){
+while(state.offset<bytes.length){
 
-const index=readVarInt();
+const index=readULEB128(bytes,state);
 
-if(offset>=bytes.length){
+if(state.offset>=bytes.length){
 break;
 }
 
-const blockId=readVarInt();
+const blockId=readULEB128(bytes,state);
 
 if(index>=result.length){
 
@@ -178,7 +399,8 @@ blockId
 
 }
 
-const unique=[...new Set(result)].filter(v=>v!==0);
+const unique=[...new Set(result)]
+.filter(v=>v!==0);
 
 log("[UNIQUE IDS]",unique);
 
@@ -199,6 +421,125 @@ x,
 y,
 z
 };
+
+}
+
+async function loadSchem(file){
+
+log("[SCHEM] reading",file.name);
+
+const buffer=await file.arrayBuffer();
+
+const bytes=new Uint8Array(buffer);
+
+log("[SCHEM] bytes",bytes.length);
+
+let offset=4;
+
+function readVarInt(){
+
+let shift=0;
+let result=0;
+
+while(true){
+
+const b=bytes[offset++];
+
+result|=(b&127)<<shift;
+
+if(!(b&128)){
+break;
+}
+
+shift+=7;
+
+}
+
+return(result>>>1)^-(result&1);
+
+}
+
+function readString(){
+
+const len=readVarInt();
+
+const slice=bytes.slice(
+offset,
+offset+len
+);
+
+offset+=len;
+
+return new TextDecoder().decode(slice);
+
+}
+
+function readBytes(){
+
+const len=readVarInt();
+
+const slice=bytes.slice(
+offset,
+offset+len
+);
+
+offset+=len;
+
+return slice;
+
+}
+
+const schem={};
+
+schem.name=readString();
+
+schem.x=readVarInt();
+schem.y=readVarInt();
+schem.z=readVarInt();
+
+schem.sizeX=readVarInt();
+schem.sizeY=readVarInt();
+schem.sizeZ=readVarInt();
+
+log("[SCHEM HEADER]",schem);
+
+schem.chunks=[];
+
+while(offset<bytes.length){
+
+const chunkCount=readVarInt();
+
+log("[CHUNK COUNT]",chunkCount);
+
+if(chunkCount<=0){
+break;
+}
+
+for(let i=0;i<chunkCount;i++){
+
+const chunk={};
+
+chunk.x=readVarInt();
+chunk.y=readVarInt();
+chunk.z=readVarInt();
+
+chunk.blocks=readBytes();
+
+schem.chunks.push(chunk);
+
+log(
+"[CHUNK]",
+chunk.x,
+chunk.y,
+chunk.z,
+chunk.blocks.length
+);
+
+}
+
+}
+
+return schem;
 
 }
 
@@ -279,9 +620,7 @@ if(typeof block.textureInfo==="string"){
 
 texName=block.textureInfo;
 
-}else if(
-Array.isArray(block.textureInfo)
-){
+}else if(Array.isArray(block.textureInfo)){
 
 texName=block.textureInfo[0];
 
@@ -325,8 +664,6 @@ scene.meshes.length
 
 if(scene.meshes.length){
 
-const meshes=scene.meshes;
-
 let minX=Infinity;
 let minY=Infinity;
 let minZ=Infinity;
@@ -335,7 +672,7 @@ let maxX=-Infinity;
 let maxY=-Infinity;
 let maxZ=-Infinity;
 
-for(const mesh of meshes){
+for(const mesh of scene.meshes){
 
 minX=Math.min(minX,mesh.position.x);
 minY=Math.min(minY,mesh.position.y);
@@ -345,6 +682,14 @@ maxX=Math.max(maxX,mesh.position.x);
 maxY=Math.max(maxY,mesh.position.y);
 maxZ=Math.max(maxZ,mesh.position.z);
 
+log(
+"[MESH]",
+mesh.name,
+mesh.position.x,
+mesh.position.y,
+mesh.position.z
+);
+
 }
 
 const center=new BABYLON.Vector3(
@@ -353,21 +698,76 @@ const center=new BABYLON.Vector3(
 (minZ+maxZ)/2
 );
 
-camera.target=center;
-
 const size=Math.max(
 maxX-minX,
 maxY-minY,
 maxZ-minZ
 );
 
-camera.radius=Math.max(8,size*2);
+camera.target=center;
+
+camera.radius=Math.max(
+8,
+size*2
+);
 
 log("[CAMERA]",center,size);
 
 }
 
 }
+
+document.getElementById(
+"buildBtn"
+).onclick=async()=>{
+
+try{
+
+log("====================");
+
+await extractTextures();
+
+await loadBlockData();
+
+const file=
+document.getElementById(
+"schemInput"
+).files[0];
+
+if(!file){
+
+alert("schem選んで！");
+return;
+
+}
+
+const schem=
+await loadSchem(file);
+
+buildSchem(schem);
+
+}catch(err){
+
+console.error(err);
+
+log("[ERROR]",err.message);
+
+}
+
+};
+
+engine.runRenderLoop(()=>{
+
+scene.render();
+
+});
+
+window.addEventListener(
+"resize",
+()=>engine.resize()
+);
+
+log("[READY]");
 
 </script>
 
