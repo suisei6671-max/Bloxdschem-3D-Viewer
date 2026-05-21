@@ -651,25 +651,36 @@ new Uint8Array(chunk.blocks)
 
 for(let i=0;i<decoded.length;i++){
 
-let id=decoded[i];
+const rawId=decoded[i];
 
-if(id===0)continue;
+if(rawId===0)continue;
 
-id=id-1;
+/*
+bloxdschem:
+0 = air
+1 = first block
+*/
 
-const block=blockMap[id];
+const blockId=rawId-1;
+
+const block=blockMap[blockId];
 
 if(!block)continue;
 
+log(
+"[BLOCK]",
+"raw=",rawId,
+"mapped=",blockId,
+block.name
+);
 const pos=idxToXYZ(i);
 
 await buildBlock(
 block,
-chunk.x*32+pos.x,
+chunk.z*32+pos.z,
 chunk.y*32+pos.y,
-chunk.z*32+pos.z
+chunk.x*32+pos.x
 );
-
 count++;
 
 }
