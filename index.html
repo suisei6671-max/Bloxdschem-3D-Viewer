@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Bloxd Schem Viewer</title>
+<title>Bloxd Schem Viewer v0.4</title>
 <style>
 *{box-sizing:border-box}
 html,body{
@@ -32,7 +32,7 @@ image-rendering:pixelated
 position:absolute;
 left:12px;
 top:12px;
-width:520px;
+width:540px;
 max-height:calc(100% - 24px);
 overflow:auto;
 background:rgba(0,0,0,.88);
@@ -75,6 +75,14 @@ overflow:auto
 
 <div id="ui">
 
+<div style="font-size:22px;font-weight:bold;margin-bottom:8px">
+Bloxd Viewer v0.4
+</div>
+
+<div style="opacity:.7;margin-bottom:12px">
+Babylon.js renderer recreation
+</div>
+
 <input type="file" id="schemInput" accept=".bloxdschem">
 
 <button id="buildBtn">
@@ -89,6 +97,8 @@ Build Viewer
 <script src="https://cdn.babylonjs.com/babylon.js"></script>
 
 <script>
+
+const VERSION="0.4";
 
 const logEl=document.getElementById("log");
 
@@ -115,6 +125,7 @@ logEl.scrollTop=logEl.scrollHeight;
 }
 
 log("[BOOT]");
+log("[VERSION]",VERSION);
 
 const canvas=document.getElementById("renderCanvas");
 
@@ -245,19 +256,28 @@ const block=blockData[i];
 
 blockMap[i]=block;
 
-if(block.id!==undefined){
-
-blockMap[block.id]=block;
-
-}
-
 }
 
 log("[BLOCK DATA]",blockData.length);
 
 log(
-"[BLOCK MAP SAMPLE]",
-Object.entries(blockMap).slice(0,10)
+"[BLOCK 0]",
+blockMap[0]
+);
+
+log(
+"[BLOCK 1]",
+blockMap[1]
+);
+
+log(
+"[BLOCK 145]",
+blockMap[145]
+);
+
+log(
+"[BLOCK 146]",
+blockMap[146]
 );
 
 }
@@ -277,8 +297,6 @@ log("[MISSING TEXTURE]",name);
 return null;
 
 }
-
-log("[TEXTURE LOAD]",name);
 
 const tex=new BABYLON.Texture(
 data,
@@ -303,8 +321,6 @@ function getMaterial(name){
 if(materialCache.has(name)){
 return materialCache.get(name);
 }
-
-log("[MATERIAL]",name);
 
 const mat=new BABYLON.StandardMaterial(
 name,
@@ -411,9 +427,9 @@ placed++;
 log(
 "[BLOCK RAW]",
 placed,
-"index=",
+"index",
 index,
-"id=",
+"id",
 blockId
 );
 
@@ -579,20 +595,32 @@ new Uint8Array(chunk.blocks)
 
 for(let i=0;i<decoded.length;i++){
 
-const id=decoded[i];
+let id=decoded[i];
 
 if(id===0){
 continue;
 }
 
-log("[RAW ID]",id);
+/*
+超重要:
+1ズレ補正
+*/
 
-const block=
-blockMap[id] ||
-blockData[id];
+const originalId=id;
+
+id=id-1;
 
 log(
-"[ID MAP]",
+"[ID SHIFT]",
+originalId,
+"->",
+id
+);
+
+const block=blockMap[id];
+
+log(
+"[BLOCK RESULT]",
 id,
 block?.name
 );
@@ -644,6 +672,11 @@ texName=block.textureInfo;
 texName=block.textureInfo[0];
 
 }
+
+log(
+"[TEXTURE]",
+texName
+);
 
 if(texName){
 
@@ -700,14 +733,6 @@ minZ=Math.min(minZ,mesh.position.z);
 maxX=Math.max(maxX,mesh.position.x);
 maxY=Math.max(maxY,mesh.position.y);
 maxZ=Math.max(maxZ,mesh.position.z);
-
-log(
-"[MESH]",
-mesh.name,
-mesh.position.x,
-mesh.position.y,
-mesh.position.z
-);
 
 }
 
