@@ -91,246 +91,43 @@ Build Viewer
 
 <script>
 
-const logEl=document.getElementById("log");
+function decodeChunkBlocks(bytes){
 
-function log(...args){
+log("[RAW BYTES]",Array.from(bytes));
 
-console.log(...args);
+/*
+Explosive の blocks:
+[128,128,128,128,1,146,2,0,0,0]
 
-logEl.textContent+=args.map(v=>{
+今まで:
+[count][id]
 
-if(typeof v==="string"){
-return v;
+だったけど違う。
 
-}
+実際は:
 
-try{
-return JSON.stringify(v,null,2);
-}catch{
-return String(v);
-}
+first = position
+second = block id
 
-}).join(" ")+"\n";
+っぽい。
+*/
 
-logEl.scrollTop=logEl.scrollHeight;
+const result=new Uint16Array(32*32*32);
 
-}
+let offset=0;
 
-log("[BOOT]");
+function readVarInt(){
 
-const canvas=document.getElementById("noa-canvas");
-
-const engine=new BABYLON.Engine(
-canvas,
-true,
-{
-antialias:false,
-preserveDrawingBuffer:true
-}
-);
-
-const scene=new BABYLON.Scene(engine);
-
-scene.clearColor=new BABYLON.Color4(
-0.2,
-0.2,
-0.3,
-1
-);
-
-scene.ambientColor=new BABYLON.Color3(
-1,
-1,
-1
-);
-
-const camera=new BABYLON.ArcRotateCamera(
-"cam",
--Math.PI/2,
-1.2,
-30,
-new BABYLON.Vector3(0,0,0),
-scene
-);
-
-camera.attachControl(canvas,true);
-
-const hemi=new BABYLON.HemisphericLight(
-"h",
-new BABYLON.Vector3(0,1,0),
-scene
-);
-
-hemi.intensity=2;
-
-log("[BABYLON READY]");
-
-const textureData={};
-const textureCache=new Map();
-const materialCache=new Map();
-
-let blockData=[];
-
-async function extractTextures(){
-
-log("[TEXTURE] scanning");
-
-const res=await fetch("./76njx.4.74e4a68f.chunk.js");
-
-const source=await res.text();
-
-log("[TEXTURE] source size",source.length);
-
-const pngRegex=/"\.\/([^"]+?)\.png":(\d+)/g;
-const dataRegex=/(\d+):[^\n]*?exports\s*=\s*"([^"]+)"/g;
-
-const pngMap=new Map();
-const base64Map=new Map();
-
-let match;
-
-while((match=pngRegex.exec(source))!==null){
-
-pngMap.set(
-match[1],
-parseInt(match[2])
-);
-
-}
-
-log("[TEXTURE] png refs",pngMap.size);
-
-while((match=dataRegex.exec(source))!==null){
-
-const id=parseInt(match[1]);
-const data=match[2];
-
-if(data.startsWith("data:image")){
-
-base64Map.set(id,data);
-
-}
-
-}
-
-log("[TEXTURE] base64 refs",base64Map.size);
-
-pngMap.forEach((id,name)=>{
-
-const data=base64Map.get(id);
-
-if(data){
-
-textureData[name]=data;
-
-}
-
-});
-
-log("[TEXTURE DONE]",Object.keys(textureData).length);
-
-}
-
-async function loadBlockData(){
-
-const res=await fetch("./blockData.json");
-
-blockData=await res.json();
-
-log("[BLOCK DATA]",blockData.length);
-
-log("[BLOCK SAMPLE]",blockData.slice(0,5));
-
-}
-
-function getTexture(name){
-
-if(textureCache.has(name)){
-return textureCache.get(name);
-}
-
-const data=textureData[name];
-
-if(!data){
-
-log("[MISSING TEXTURE]",name);
-
-return null;
-
-}
-
-log("[TEXTURE LOAD]",name);
-
-const tex=new BABYLON.Texture(
-data,
-scene,
-false,
-false,
-BABYLON.Texture.NEAREST_SAMPLINGMODE
-);
-
-tex.updateSamplingMode(
-BABYLON.Texture.NEAREST_SAMPLINGMODE
-);
-
-textureCache.set(name,tex);
-
-return tex;
-
-}
-
-function getMaterial(name){
-
-if(materialCache.has(name)){
-return materialCache.get(name);
-}
-
-log("[MATERIAL]",name);
-
-const mat=new BABYLON.StandardMaterial(
-name,
-scene
-);
-
-mat.specularColor=BABYLON.Color3.Black();
-
-mat.emissiveColor=new BABYLON.Color3(
-1,
-1,
-1
-);
-
-mat.disableLighting=true;
-
-const tex=getTexture(name);
-
-if(tex){
-
-mat.diffuseTexture=tex;
-
-}
-
-materialCache.set(name,mat);
-
-return mat;
-
-}
-
-function readULEB128(bytes,offset){
-
-let result=0;
+let num=0;
 let shift=0;
-let pos=offset;
 
 while(true){
 
-const byte=bytes[pos];
+const b=bytes[offset++];
 
-result|=(byte&127)<<shift;
+num|=(b&127)<<shift;
 
-pos++;
-
-if((byte&128)===0){
+if((b&128)===0){
 break;
 }
 
@@ -338,48 +135,52 @@ shift+=7;
 
 }
 
-return{
-value:result,
-offset:pos
-};
+return num;
 
 }
 
-function decodeChunkBlocks(bytes){
-
-const result=[];
-
-let offset=0;
-
-let loops=0;
+let placed=0;
 
 while(offset<bytes.length){
 
-loops++;
+const index=readVarInt();
 
-if(loops>100000){
-
-log("[RLE SAFETY BREAK]");
-
+if(offset>=bytes.length){
 break;
+}
+
+const blockId=readVarInt();
+
+if(index>=result.length){
+
+log(
+"[INDEX OOB]",
+index,
+blockId
+);
+
+continue;
 
 }
 
-const countData=readULEB128(bytes,offset);
+result[index]=blockId;
 
-offset=countData.offset;
+placed++;
 
-const idData=readULEB128(bytes,offset);
-
-offset=idData.offset;
-
-for(let i=0;i<countData.value;i++){
-
-result.push(idData.value);
+log(
+"[BLOCK]",
+placed,
+"index=",
+index,
+"id=",
+blockId
+);
 
 }
 
-}
+const unique=[...new Set(result)].filter(v=>v!==0);
+
+log("[UNIQUE IDS]",unique);
 
 return result;
 
@@ -401,137 +202,6 @@ z
 
 }
 
-async function loadSchem(file){
-
-log("[SCHEM] reading",file.name);
-
-const buffer=await file.arrayBuffer();
-
-const bytes=new Uint8Array(buffer);
-
-log("[SCHEM] bytes",bytes.length);
-
-let offset=4;
-
-function readVarInt(){
-
-let shift=0;
-let result=0;
-
-while(true){
-
-const b=bytes[offset++];
-
-result|=(b&127)<<shift;
-
-if(!(b&128)){
-break;
-}
-
-shift+=7;
-
-}
-
-return(result>>>1)^-(result&1);
-
-}
-
-function readString(){
-
-const len=readVarInt();
-
-const slice=bytes.slice(
-offset,
-offset+len
-);
-
-offset+=len;
-
-return new TextDecoder().decode(slice);
-
-}
-
-function readBytes(){
-
-const len=readVarInt();
-
-const slice=bytes.slice(
-offset,
-offset+len
-);
-
-offset+=len;
-
-return slice;
-
-}
-
-const schem={};
-
-schem.name=readString();
-
-schem.x=readVarInt();
-schem.y=readVarInt();
-schem.z=readVarInt();
-
-schem.sizeX=readVarInt();
-schem.sizeY=readVarInt();
-schem.sizeZ=readVarInt();
-
-log("[SCHEM HEADER]",schem);
-
-schem.chunks=[];
-
-while(offset<bytes.length){
-
-const chunkCount=readVarInt();
-
-log("[CHUNK COUNT]",chunkCount);
-
-if(chunkCount<=0){
-break;
-}
-
-for(let i=0;i<chunkCount;i++){
-
-const chunk={};
-
-chunk.x=readVarInt();
-chunk.y=readVarInt();
-chunk.z=readVarInt();
-
-chunk.blocks=readBytes();
-
-schem.chunks.push(chunk);
-
-log(
-"[CHUNK]",
-chunk.x,
-chunk.y,
-chunk.z,
-chunk.blocks.length
-);
-
-}
-
-}
-
-return schem;
-
-}
-
-function clearWorld(){
-
-const meshes=scene.meshes.slice();
-
-for(const mesh of meshes){
-
-mesh.dispose();
-
-}
-
-}
-
 function buildSchem(schem){
 
 clearWorld();
@@ -546,11 +216,9 @@ const decoded=decodeChunkBlocks(
 new Uint8Array(chunk.blocks)
 );
 
-log("[DECODED]",decoded.length);
-
 log(
-"[FIRST IDS]",
-decoded.slice(0,50)
+"[NONZERO COUNT]",
+decoded.filter(v=>v!==0).length
 );
 
 for(let i=0;i<decoded.length;i++){
@@ -563,9 +231,15 @@ continue;
 
 const block=blockData[id];
 
+log(
+"[ID CHECK]",
+id,
+block?.name
+);
+
 if(!block){
 
-log("[NO BLOCK]",id);
+log("[UNKNOWN BLOCK]",id);
 
 continue;
 
@@ -579,7 +253,6 @@ const worldZ=chunk.z*32+pos.z;
 
 log(
 "[PLACE]",
-id,
 block.name,
 worldX,
 worldY,
@@ -600,24 +273,28 @@ worldY,
 worldZ
 );
 
+let texName=null;
+
 if(typeof block.textureInfo==="string"){
 
-box.material=getMaterial(
-block.textureInfo
-);
+texName=block.textureInfo;
 
-}else if(Array.isArray(block.textureInfo)){
+}else if(
+Array.isArray(block.textureInfo)
+){
 
-const texName=
-block.textureInfo[0];
+texName=block.textureInfo[0];
 
-box.material=getMaterial(
-texName
-);
+}
+
+if(texName){
+
+box.material=getMaterial(texName);
 
 }else{
 
-const debugMat=new BABYLON.StandardMaterial(
+const debugMat=
+new BABYLON.StandardMaterial(
 "debug",
 scene
 );
@@ -635,10 +312,6 @@ box.material=debugMat;
 
 rendered++;
 
-if(rendered>=20){
-break;
-}
-
 }
 
 }
@@ -650,80 +323,51 @@ log(
 scene.meshes.length
 );
 
-scene.meshes.forEach((m,i)=>{
+if(scene.meshes.length){
 
-log(
-"[MESH]",
-i,
-m.name,
-m.position.x,
-m.position.y,
-m.position.z
-);
+const meshes=scene.meshes;
 
-});
+let minX=Infinity;
+let minY=Infinity;
+let minZ=Infinity;
 
-camera.target=new BABYLON.Vector3(
-0,
-0,
-0
-);
+let maxX=-Infinity;
+let maxY=-Infinity;
+let maxZ=-Infinity;
 
-camera.radius=40;
+for(const mesh of meshes){
 
-}
+minX=Math.min(minX,mesh.position.x);
+minY=Math.min(minY,mesh.position.y);
+minZ=Math.min(minZ,mesh.position.z);
 
-document.getElementById(
-"buildBtn"
-).onclick=async()=>{
-
-try{
-
-log("==============");
-
-await extractTextures();
-
-await loadBlockData();
-
-const file=
-document.getElementById(
-"schemInput"
-).files[0];
-
-if(!file){
-
-alert("schem選んで！");
-return;
+maxX=Math.max(maxX,mesh.position.x);
+maxY=Math.max(maxY,mesh.position.y);
+maxZ=Math.max(maxZ,mesh.position.z);
 
 }
 
-const schem=
-await loadSchem(file);
+const center=new BABYLON.Vector3(
+(minX+maxX)/2,
+(minY+maxY)/2,
+(minZ+maxZ)/2
+);
 
-buildSchem(schem);
+camera.target=center;
 
-}catch(err){
+const size=Math.max(
+maxX-minX,
+maxY-minY,
+maxZ-minZ
+);
 
-console.error(err);
+camera.radius=Math.max(8,size*2);
 
-log("[ERROR]",err.message);
+log("[CAMERA]",center,size);
 
 }
 
-};
-
-engine.runRenderLoop(()=>{
-
-scene.render();
-
-});
-
-window.addEventListener(
-"resize",
-()=>engine.resize()
-);
-
-log("[READY]");
+}
 
 </script>
 
