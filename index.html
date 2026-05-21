@@ -223,36 +223,44 @@ const json=await res.json();
 
 blockMap={};
 
-if(Array.isArray(json)){
+/*
+現在の形式:
+[
+  {...},
+  {...}
+]
 
-for(const entry of json){
+index = block id
+*/
 
-const key=parseInt(entry[0]);
+for(let i=0;i<json.length;i++){
 
-const value=entry[1];
-
-blockMap[key]=value;
-
-}
-
-}else{
-
-for(const key in json){
-
-blockMap[parseInt(key)]=json[key];
+blockMap[i]=json[i];
 
 }
-
-}
-
-log("[BLOCKS]",Object.keys(blockMap).length);
 
 log(
-"[BLOCK SAMPLE]",
-Object.entries(blockMap).slice(0,5)
+"[BLOCKS]",
+Object.keys(blockMap).length
+);
+
+log(
+"[BLOCK 0]",
+blockMap[0]
+);
+
+log(
+"[BLOCK 1]",
+blockMap[1]
+);
+
+log(
+"[BLOCK 2]",
+blockMap[2]
 );
 
 }
+
 
 function getTexture(name){
 
