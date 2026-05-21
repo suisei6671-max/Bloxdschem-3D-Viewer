@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Bloxd Schem Viewer v0.4</title>
+<title>Bloxd Viewer v0.5</title>
 <style>
 *{box-sizing:border-box}
 html,body{
@@ -32,7 +32,7 @@ image-rendering:pixelated
 position:absolute;
 left:12px;
 top:12px;
-width:540px;
+width:560px;
 max-height:calc(100% - 24px);
 overflow:auto;
 background:rgba(0,0,0,.88);
@@ -76,11 +76,11 @@ overflow:auto
 <div id="ui">
 
 <div style="font-size:22px;font-weight:bold;margin-bottom:8px">
-Bloxd Viewer v0.4
+Bloxd Viewer v0.5
 </div>
 
 <div style="opacity:.7;margin-bottom:12px">
-Babylon.js renderer recreation
+texturePerSide supported
 </div>
 
 <input type="file" id="schemInput" accept=".bloxdschem">
@@ -98,7 +98,7 @@ Build Viewer
 
 <script>
 
-const VERSION="0.4";
+const VERSION="0.5";
 
 const logEl=document.getElementById("log");
 
@@ -252,33 +252,23 @@ blockMap={};
 
 for(let i=0;i<blockData.length;i++){
 
-const block=blockData[i];
+const entry=blockData[i];
 
-blockMap[i]=block;
+if(Array.isArray(entry)){
+
+blockMap[parseInt(entry[0])]=entry[1];
+
+}else{
+
+blockMap[i]=entry;
 
 }
 
-log("[BLOCK DATA]",blockData.length);
+}
 
-log(
-"[BLOCK 0]",
-blockMap[0]
-);
+log("[BLOCK DATA]",Object.keys(blockMap).length);
 
-log(
-"[BLOCK 1]",
-blockMap[1]
-);
-
-log(
-"[BLOCK 145]",
-blockMap[145]
-);
-
-log(
-"[BLOCK 146]",
-blockMap[146]
-);
+log("[BLOCK SAMPLE]",blockMap[3]);
 
 }
 
@@ -388,15 +378,11 @@ return result;
 
 function decodeChunkBlocks(bytes){
 
-log("[RAW BYTES]",Array.from(bytes));
-
 const result=new Uint16Array(32*32*32);
 
 const state={
 offset:0
 };
-
-let placed=0;
 
 while(state.offset<bytes.length){
 
@@ -409,36 +395,12 @@ break;
 const blockId=readULEB128(bytes,state);
 
 if(index>=result.length){
-
-log(
-"[INDEX OOB]",
-index,
-blockId
-);
-
 continue;
-
 }
 
 result[index]=blockId;
 
-placed++;
-
-log(
-"[BLOCK RAW]",
-placed,
-"index",
-index,
-"id",
-blockId
-);
-
 }
-
-const unique=[...new Set(result)]
-.filter(v=>v!==0);
-
-log("[UNIQUE IDS]",unique);
 
 return result;
 
@@ -545,8 +507,6 @@ while(offset<bytes.length){
 
 const chunkCount=readVarInt();
 
-log("[CHUNK COUNT]",chunkCount);
-
 if(chunkCount<=0){
 break;
 }
@@ -579,6 +539,142 @@ return schem;
 
 }
 
+function buildBlock(block,worldX,worldY,worldZ){
+
+const box=BABYLON.MeshBuilder.CreateBox(
+"block",
+{
+size:1
+},
+scene
+);
+
+box.position.set(
+worldX,
+worldY,
+worldZ
+);
+
+if(typeof block.textureInfo==="string"){
+
+box.material=getMaterial(
+block.textureInfo
+);
+
+return box;
+
+}
+
+if(Array.isArray(block.textureInfo)){
+
+const multiMat=new BABYLON.MultiMaterial(
+"multi",
+scene
+);
+
+/*
+Babylon:
+0 front
+1 back
+2 right
+3 left
+4 top
+5 bottom
+
+Bloxd:
+[left,right,top,bottom,front,back]
+*/
+
+const map=[
+4,
+5,
+1,
+0,
+2,
+3
+];
+
+for(let face=0;face<6;face++){
+
+const bloxdFace=map[face];
+
+const texIndex=
+block.texturePerSide?.[
+bloxdFace
+] ?? 0;
+
+const texName=
+block.textureInfo[
+texIndex
+];
+
+log(
+"[FACE]",
+face,
+"bloxd",
+bloxdFace,
+"tex",
+texName
+);
+
+multiMat.subMaterials.push(
+getMaterial(texName)
+);
+
+}
+
+box.material=multiMat;
+
+const verticesCount=
+box.getTotalVertices();
+
+const indices=
+box.getIndices();
+
+box.subMeshes=[];
+
+let offset=0;
+
+for(let face=0;face<6;face++){
+
+const subMesh=new BABYLON.SubMesh(
+face,
+0,
+verticesCount,
+offset,
+6,
+box
+);
+
+box.subMeshes.push(subMesh);
+
+offset+=6;
+
+}
+
+return box;
+
+}
+
+const debugMat=
+new BABYLON.StandardMaterial(
+"debug",
+scene
+);
+
+debugMat.diffuseColor=
+new BABYLON.Color3(
+1,
+0,
+1
+);
+
+box.material=debugMat;
+
+return box;
+
+}
+
 function buildSchem(schem){
 
 clearWorld();
@@ -593,6 +689,11 @@ const decoded=decodeChunkBlocks(
 new Uint8Array(chunk.blocks)
 );
 
+const unique=[...new Set(decoded)]
+.filter(v=>v!==0);
+
+log("[UNIQUE IDS]",unique);
+
 for(let i=0;i<decoded.length;i++){
 
 let id=decoded[i];
@@ -602,25 +703,19 @@ continue;
 }
 
 /*
-超重要:
 1ズレ補正
 */
 
-const originalId=id;
+const original=id;
 
 id=id-1;
-
-log(
-"[ID SHIFT]",
-originalId,
-"->",
-id
-);
 
 const block=blockMap[id];
 
 log(
-"[BLOCK RESULT]",
+"[BLOCK]",
+original,
+"->",
 id,
 block?.name
 );
@@ -639,67 +734,12 @@ const worldX=chunk.x*32+pos.x;
 const worldY=chunk.y*32+pos.y;
 const worldZ=chunk.z*32+pos.z;
 
-log(
-"[PLACE]",
-block.name,
+buildBlock(
+block,
 worldX,
 worldY,
 worldZ
 );
-
-const box=BABYLON.MeshBuilder.CreateBox(
-"block",
-{
-size:1
-},
-scene
-);
-
-box.position.set(
-worldX,
-worldY,
-worldZ
-);
-
-let texName=null;
-
-if(typeof block.textureInfo==="string"){
-
-texName=block.textureInfo;
-
-}else if(Array.isArray(block.textureInfo)){
-
-texName=block.textureInfo[0];
-
-}
-
-log(
-"[TEXTURE]",
-texName
-);
-
-if(texName){
-
-box.material=getMaterial(texName);
-
-}else{
-
-const debugMat=
-new BABYLON.StandardMaterial(
-"debug",
-scene
-);
-
-debugMat.diffuseColor=
-new BABYLON.Color3(
-1,
-0,
-1
-);
-
-box.material=debugMat;
-
-}
 
 rendered++;
 
@@ -708,11 +748,6 @@ rendered++;
 }
 
 log("[DONE]",rendered);
-
-log(
-"[MESH COUNT]",
-scene.meshes.length
-);
 
 if(scene.meshes.length){
 
