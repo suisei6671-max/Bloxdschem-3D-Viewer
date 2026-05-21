@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Bloxd Viewer v0.5</title>
+<title>Bloxd Viewer v0.6</title>
 <style>
 *{box-sizing:border-box}
 html,body{
@@ -76,11 +76,11 @@ overflow:auto
 <div id="ui">
 
 <div style="font-size:22px;font-weight:bold;margin-bottom:8px">
-Bloxd Viewer v0.5
+Bloxd Viewer v0.6
 </div>
 
 <div style="opacity:.7;margin-bottom:12px">
-texturePerSide supported
+left/right texture rotation supported
 </div>
 
 <input type="file" id="schemInput" accept=".bloxdschem">
@@ -98,7 +98,7 @@ Build Viewer
 
 <script>
 
-const VERSION="0.5";
+const VERSION="0.6";
 
 const logEl=document.getElementById("log");
 
@@ -172,8 +172,6 @@ scene
 
 light.intensity=2;
 
-log("[BABYLON READY]");
-
 const textureData={};
 const textureCache=new Map();
 const materialCache=new Map();
@@ -188,8 +186,6 @@ log("[TEXTURE] scanning");
 const res=await fetch("./76njx.4.74e4a68f.chunk.js");
 
 const source=await res.text();
-
-log("[TEXTURE] source size",source.length);
 
 const pngRegex=/"\.\/([^"]+?)\.png":(\d+)/g;
 const dataRegex=/(\d+):[^\n]*?exports\s*=\s*"([^"]+)"/g;
@@ -208,8 +204,6 @@ parseInt(match[2])
 
 }
 
-log("[TEXTURE] png refs",pngMap.size);
-
 while((match=dataRegex.exec(source))!==null){
 
 const id=parseInt(match[1]);
@@ -223,8 +217,6 @@ base64Map.set(id,data);
 }
 
 }
-
-log("[TEXTURE] base64 refs",base64Map.size);
 
 pngMap.forEach((id,name)=>{
 
@@ -268,8 +260,6 @@ blockMap[i]=entry;
 
 log("[BLOCK DATA]",Object.keys(blockMap).length);
 
-log("[BLOCK SAMPLE]",blockMap[3]);
-
 }
 
 function getTexture(name){
@@ -306,6 +296,90 @@ return tex;
 
 }
 
+async function makeRotatedTexture(name,deg){
+
+const key=name+"_rot_"+deg;
+
+if(textureCache.has(key)){
+return textureCache.get(key);
+}
+
+const src=textureData[name];
+
+if(!src){
+
+return getTexture(name);
+
+}
+
+return new Promise(resolve=>{
+
+const img=new Image();
+
+img.src=src;
+
+img.onload=()=>{
+
+const cvs=document.createElement("canvas");
+
+cvs.width=16;
+cvs.height=16;
+
+const ctx=cvs.getContext("2d");
+
+ctx.imageSmoothingEnabled=false;
+
+ctx.save();
+
+ctx.translate(8,8);
+
+ctx.rotate(deg*Math.PI/180);
+
+ctx.drawImage(
+img,
+-8,
+-8,
+16,
+16
+);
+
+ctx.restore();
+
+const tex=new BABYLON.DynamicTexture(
+key,
+{
+width:16,
+height:16
+},
+scene,
+false,
+BABYLON.Texture.NEAREST_SAMPLINGMODE
+);
+
+const tctx=tex.getContext();
+
+tctx.imageSmoothingEnabled=false;
+
+tctx.clearRect(0,0,16,16);
+
+tctx.drawImage(cvs,0,0);
+
+tex.update();
+
+tex.updateSamplingMode(
+BABYLON.Texture.NEAREST_SAMPLINGMODE
+);
+
+textureCache.set(key,tex);
+
+resolve(tex);
+
+};
+
+});
+
+}
+
 function getMaterial(name){
 
 if(materialCache.has(name)){
@@ -336,6 +410,42 @@ mat.diffuseTexture=tex;
 }
 
 materialCache.set(name,mat);
+
+return mat;
+
+}
+
+async function getRotatedMaterial(name){
+
+const key=name+"_rot";
+
+if(materialCache.has(key)){
+return materialCache.get(key);
+}
+
+const tex=await makeRotatedTexture(
+name,
+90
+);
+
+const mat=new BABYLON.StandardMaterial(
+key,
+scene
+);
+
+mat.diffuseTexture=tex;
+
+mat.specularColor=BABYLON.Color3.Black();
+
+mat.emissiveColor=new BABYLON.Color3(
+1,
+1,
+1
+);
+
+mat.disableLighting=true;
+
+materialCache.set(key,mat);
 
 return mat;
 
@@ -430,8 +540,6 @@ const buffer=await file.arrayBuffer();
 
 const bytes=new Uint8Array(buffer);
 
-log("[SCHEM] bytes",bytes.length);
-
 let offset=4;
 
 function readVarInt(){
@@ -523,23 +631,22 @@ chunk.blocks=readBytes();
 
 schem.chunks.push(chunk);
 
-log(
-"[CHUNK]",
-chunk.x,
-chunk.y,
-chunk.z,
-chunk.blocks.length
-);
-
 }
 
 }
+
+log("[CHUNKS]",schem.chunks.length);
 
 return schem;
 
 }
 
-function buildBlock(block,worldX,worldY,worldZ){
+async function buildBlock(
+block,
+worldX,
+worldY,
+worldZ
+){
 
 const box=BABYLON.MeshBuilder.CreateBox(
 "block",
@@ -561,7 +668,7 @@ box.material=getMaterial(
 block.textureInfo
 );
 
-return box;
+return;
 
 }
 
@@ -608,18 +715,28 @@ block.textureInfo[
 texIndex
 ];
 
-log(
-"[FACE]",
-face,
-"bloxd",
-bloxdFace,
-"tex",
+let mat;
+
+/*
+2 right
+3 left
+*/
+
+if(face===2 || face===3){
+
+mat=await getRotatedMaterial(
 texName
 );
 
-multiMat.subMaterials.push(
-getMaterial(texName)
+}else{
+
+mat=getMaterial(
+texName
 );
+
+}
+
+multiMat.subMaterials.push(mat);
 
 }
 
@@ -627,9 +744,6 @@ box.material=multiMat;
 
 const verticesCount=
 box.getTotalVertices();
-
-const indices=
-box.getIndices();
 
 box.subMeshes=[];
 
@@ -652,7 +766,7 @@ offset+=6;
 
 }
 
-return box;
+return;
 
 }
 
@@ -671,11 +785,9 @@ new BABYLON.Color3(
 
 box.material=debugMat;
 
-return box;
-
 }
 
-function buildSchem(schem){
+async function buildSchem(schem){
 
 clearWorld();
 
@@ -689,11 +801,6 @@ const decoded=decodeChunkBlocks(
 new Uint8Array(chunk.blocks)
 );
 
-const unique=[...new Set(decoded)]
-.filter(v=>v!==0);
-
-log("[UNIQUE IDS]",unique);
-
 for(let i=0;i<decoded.length;i++){
 
 let id=decoded[i];
@@ -706,19 +813,9 @@ continue;
 1ズレ補正
 */
 
-const original=id;
-
 id=id-1;
 
 const block=blockMap[id];
-
-log(
-"[BLOCK]",
-original,
-"->",
-id,
-block?.name
-);
 
 if(!block){
 
@@ -734,7 +831,7 @@ const worldX=chunk.x*32+pos.x;
 const worldY=chunk.y*32+pos.y;
 const worldZ=chunk.z*32+pos.z;
 
-buildBlock(
+await buildBlock(
 block,
 worldX,
 worldY,
@@ -790,8 +887,6 @@ camera.radius=Math.max(
 size*2
 );
 
-log("[CAMERA]",center,size);
-
 }
 
 }
@@ -823,7 +918,7 @@ return;
 const schem=
 await loadSchem(file);
 
-buildSchem(schem);
+await buildSchem(schem);
 
 }catch(err){
 
