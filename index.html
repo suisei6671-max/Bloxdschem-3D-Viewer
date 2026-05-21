@@ -35,7 +35,7 @@ top:12px;
 width:520px;
 max-height:calc(100% - 24px);
 overflow:auto;
-background:rgba(0,0,0,.85);
+background:rgba(0,0,0,.88);
 border-radius:16px;
 padding:14px;
 z-index:10
@@ -168,6 +168,7 @@ const textureCache=new Map();
 const materialCache=new Map();
 
 let blockData=[];
+let blockMap={};
 
 async function extractTextures(){
 
@@ -236,9 +237,28 @@ const res=await fetch("./blockData.json");
 
 blockData=await res.json();
 
+blockMap={};
+
+for(let i=0;i<blockData.length;i++){
+
+const block=blockData[i];
+
+blockMap[i]=block;
+
+if(block.id!==undefined){
+
+blockMap[block.id]=block;
+
+}
+
+}
+
 log("[BLOCK DATA]",blockData.length);
 
-log("[BLOCK SAMPLE]",blockData.slice(0,5));
+log(
+"[BLOCK MAP SAMPLE]",
+Object.entries(blockMap).slice(0,10)
+);
 
 }
 
@@ -389,7 +409,7 @@ result[index]=blockId;
 placed++;
 
 log(
-"[BLOCK]",
+"[BLOCK RAW]",
 placed,
 "index=",
 index,
@@ -557,11 +577,6 @@ const decoded=decodeChunkBlocks(
 new Uint8Array(chunk.blocks)
 );
 
-log(
-"[NONZERO COUNT]",
-decoded.filter(v=>v!==0).length
-);
-
 for(let i=0;i<decoded.length;i++){
 
 const id=decoded[i];
@@ -570,10 +585,14 @@ if(id===0){
 continue;
 }
 
-const block=blockData[id];
+log("[RAW ID]",id);
+
+const block=
+blockMap[id] ||
+blockData[id];
 
 log(
-"[ID CHECK]",
+"[ID MAP]",
 id,
 block?.name
 );
