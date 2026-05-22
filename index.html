@@ -559,22 +559,59 @@ return schem;
 
 }
 
-async function buildBlock(block,x,y,z){
 
 /*
-Babylon faces:
+Babylon:
 0 front
 1 back
 2 right
 3 left
 4 top
 5 bottom
+*/
 
+/*
+回転設定を全部ここで管理
+
+あとから超編集しやすい
+*/
+
+const FACE_ROTATION={
+
+front:90,
+back:90,
+
+right:0,
+left:0,
+
+top:-90,
+bottom:-90
+
+};
+
+/*
+Babylon face id -> 名前
+*/
+
+const FACE_NAME={
+
+0:"front",
+1:"back",
+
+2:"right",
+3:"left",
+
+4:"top",
+5:"bottom"
+
+};
+
+/*
 Bloxd:
 [left,right,top,bottom,front,back]
 */
 
-const faceMap=[
+const FACE_MAP=[
 4,
 5,
 1,
@@ -583,11 +620,12 @@ const faceMap=[
 3
 ];
 
+async function buildBlock(block,x,y,z){
+
 const mesh=BABYLON.MeshBuilder.CreateBox(
 "block",
 {
-size:1,
-wrap:true
+size:1
 },
 scene
 );
@@ -614,31 +652,9 @@ const multi=new BABYLON.MultiMaterial(
 scene
 );
 
-/*
-重要
-
-前後上下だけ
-左90°
-
-= texture を -90 回転
-*/
-
-const rotationMap={
-
-0:-90, // front
-1:-90, // back
-
-2:0,   // right
-3:0,   // left
-
-4:-90, // top
-5:-90  // bottom
-
-};
-
 for(let face=0;face<6;face++){
 
-const bloxdFace=faceMap[face];
+const bloxdFace=FACE_MAP[face];
 
 const texIndex=
 block.texturePerSide?.[
@@ -650,12 +666,17 @@ block.textureInfo[
 texIndex
 ];
 
+const faceName=
+FACE_NAME[face];
+
 const rot=
-rotationMap[face] ?? 0;
+FACE_ROTATION[
+faceName
+] ?? 0;
 
 log(
 "[FACE]",
-face,
+faceName,
 texName,
 "ROT",
 rot
@@ -695,11 +716,11 @@ multi.subMaterials.push(mat);
 
 }
 
-/*
-face order fixed
-*/
-
 mesh.material=multi;
+
+/*
+submesh fix
+*/
 
 const verticesCount=
 mesh.getTotalVertices();
@@ -726,8 +747,6 @@ mesh
 indexStart+=6;
 
 }
-
-log("[BLOCK BUILT]",block.name);
 
 }
 
