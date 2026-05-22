@@ -231,6 +231,10 @@ blockMap[i]=json[i];
 
 log("[BLOCKS]",Object.keys(blockMap).length);
 
+log("[BLOCK 0]",blockMap[0]);
+log("[BLOCK 1]",blockMap[1]);
+log("[BLOCK 2]",blockMap[2]);
+
 }
 
 function getTexture(name){
@@ -303,10 +307,6 @@ c.height=16;
 const ctx=c.getContext("2d");
 
 ctx.imageSmoothingEnabled=false;
-
-/*
-左90°
-*/
 
 ctx.translate(8,8);
 
@@ -610,9 +610,16 @@ const faceMap=[
 ];
 
 /*
-前後上下
+前後上下の4面だけ
 左90°
-左右そのまま
+
+front
+back
+top
+bottom
+
+right/left
+回転なし
 */
 
 const rotationMap={
@@ -649,6 +656,7 @@ log(
 "[FACE]",
 face,
 texName,
+"ROT",
 rot
 );
 
