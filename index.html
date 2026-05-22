@@ -119,7 +119,7 @@ BUILD
 
 <script>
 
-const VERSION="alpha-0.13";
+const VERSION="alpha-0.14";
 
 const logEl=document.getElementById("log");
 
@@ -192,13 +192,11 @@ const textureData={};
 const textureCache=
 new Map();
 
-const materialCache=
-new Map();
-
 let blockMap={};
 
 /*
-Babylon faces:
+Babylon faces
+
 0 front
 1 back
 2 right
@@ -207,16 +205,16 @@ Babylon faces:
 5 bottom
 */
 
-const FACE_NAME={
+const FACE_ROTATION={
 
-0:"front",
-1:"back",
+0:90,
+1:90,
 
-2:"right",
-3:"left",
+2:90,
+3:90,
 
-4:"top",
-5:"bottom"
+4:-90,
+5:-90
 
 };
 
@@ -233,23 +231,6 @@ const FACE_MAP=[
 2,
 3
 ];
-
-/*
-回転設定
-*/
-
-const FACE_ROTATION={
-
-front:90,
-back:90,
-
-right:0,
-left:0,
-
-top:0,
-bottom:0
-
-};
 
 async function extractTextures(){
 
@@ -414,7 +395,7 @@ deg
 ){
 
 const key=
-`${name}_rot_${deg}_${Date.now()}`;
+`${name}_rot_${deg}_${Math.random()}`;
 
 const src=
 textureData[name];
@@ -723,6 +704,10 @@ scene
 
 mesh.position.set(x,y,z);
 
+/*
+単一テクスチャ
+*/
+
 if(
 typeof block.textureInfo==="string"
 ){
@@ -777,17 +762,16 @@ block.textureInfo[
 texIndex
 ];
 
-const faceName=
-FACE_NAME[face];
-
 const rot=
 FACE_ROTATION[
-faceName
+face
 ] ?? 0;
 
 log(
 "[FACE]",
-faceName,
+face,
+texName,
+"ROT",
 rot
 );
 
@@ -810,7 +794,9 @@ tex=getTexture(texName);
 const mat=
 new BABYLON.StandardMaterial(
 texName+"_"+
-face,
+face+
+"_"+
+Math.random(),
 scene
 );
 
@@ -955,7 +941,6 @@ document
 try{
 
 textureCache.clear();
-materialCache.clear();
 
 await extractTextures();
 
