@@ -561,34 +561,8 @@ return schem;
 
 async function buildBlock(block,x,y,z){
 
-const mesh=BABYLON.MeshBuilder.CreateBox(
-"block",
-{
-size:1
-},
-scene
-);
-
-mesh.position.set(x,y,z);
-
-if(typeof block.textureInfo==="string"){
-
-mesh.material=await createMaterial(
-block.textureInfo,
-0
-);
-
-return;
-
-}
-
-const multi=new BABYLON.MultiMaterial(
-"multi",
-scene
-);
-
 /*
-Babylon:
+Babylon faces:
 0 front
 1 back
 2 right
@@ -609,29 +583,56 @@ const faceMap=[
 3
 ];
 
+const mesh=BABYLON.MeshBuilder.CreateBox(
+"block",
+{
+size:1,
+wrap:true
+},
+scene
+);
+
+mesh.position.set(x,y,z);
+
 /*
-前後上下の4面だけ
+単一テクスチャ
+*/
+
+if(typeof block.textureInfo==="string"){
+
+mesh.material=await createMaterial(
+block.textureInfo,
+0
+);
+
+return;
+
+}
+
+const multi=new BABYLON.MultiMaterial(
+"multi",
+scene
+);
+
+/*
+重要
+
+前後上下だけ
 左90°
 
-front
-back
-top
-bottom
-
-right/left
-回転なし
+= texture を -90 回転
 */
 
 const rotationMap={
 
-0:-90,
-1:-90,
+0:-90, // front
+1:-90, // back
 
-2:0,
-3:0,
+2:0,   // right
+3:0,   // left
 
-4:-90,
-5:-90
+4:-90, // top
+5:-90  // bottom
 
 };
 
@@ -660,40 +661,73 @@ texName,
 rot
 );
 
-const mat=
-await createMaterial(
+let tex;
+
+if(rot!==0){
+
+tex=await createRotatedTexture(
 texName,
 rot
 );
+
+}else{
+
+tex=getTexture(texName);
+
+}
+
+const mat=new BABYLON.StandardMaterial(
+texName+"_face_"+face,
+scene
+);
+
+mat.diffuseTexture=tex;
+
+mat.specularColor=
+BABYLON.Color3.Black();
+
+mat.emissiveColor=
+new BABYLON.Color3(1,1,1);
+
+mat.disableLighting=true;
 
 multi.subMaterials.push(mat);
 
 }
 
+/*
+face order fixed
+*/
+
 mesh.material=multi;
 
-const vc=mesh.getTotalVertices();
+const verticesCount=
+mesh.getTotalVertices();
 
 mesh.subMeshes=[];
 
-let idx=0;
+let indexStart=0;
 
 for(let i=0;i<6;i++){
 
 mesh.subMeshes.push(
+
 new BABYLON.SubMesh(
 i,
 0,
-vc,
-idx,
+verticesCount,
+indexStart,
 6,
 mesh
 )
+
 );
 
-idx+=6;
+indexStart+=6;
 
 }
+
+log("[BLOCK BUILT]",block.name);
 
 }
 
