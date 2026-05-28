@@ -1,4 +1,4 @@
-const VERSION = "alpha-0.25-dynamic-margin";
+const VERSION = "alpha-0.26-pixel-perfect-crop";
 
 const logEl = document.getElementById("log");
 
@@ -55,7 +55,6 @@ const FACE_ROTATION = {
     5: -90  // bottom
 };
 
-// UI Elements for Margin
 const marginSlider = document.getElementById("marginSlider");
 const marginValue = document.getElementById("marginValue");
 if (marginSlider && marginValue) {
@@ -299,13 +298,13 @@ function getModelWorldBounds() {
 }
 
 async function instantCapture() {
+    log("[CAPTURE] starting pixel-perfect crop...");
     camera.alpha = Math.PI / 4;
     camera.beta = Math.atan(Math.SQRT2);
     const bounds = getModelWorldBounds();
     if (bounds) camera.setTarget(BABYLON.Vector3.Center(bounds.min, bounds.max));
     scene.render();
     
-    const screenBounds = getModelScreenBounds();
     const FINAL_SCALE = 5;
     const targetWidth = Math.round(canvas.width * FINAL_SCALE);
     const targetHeight = Math.round(canvas.height * FINAL_SCALE);
@@ -317,10 +316,48 @@ async function instantCapture() {
     rtt.render();
     
     rtt.readPixels().then((pixels) => {
+        // Scan pixels to find the actual content boundaries
+        let minX = targetWidth, maxX = 0, minY = targetHeight, maxY = 0;
+        let found = false;
+        for (let y = 0; y < targetHeight; y++) {
+            for (let x = 0; x < targetWidth; x++) {
+                const alpha = pixels[(y * targetWidth + x) * 4 + 3];
+                if (alpha > 0) {
+                    if (x < minX) minX = x;
+                    if (x > maxX) maxX = x;
+                    if (y < minY) minY = y;
+                    if (y > maxY) maxY = y;
+                    found = true;
+                }
+            }
+        }
+
+        if (!found) {
+            log("[CAPTURE ERROR] No content found in render");
+            rtt.dispose();
+            return;
+        }
+
+        // Calculate content size
+        let contentW = maxX - minX + 1;
+        let contentH = maxY - minY + 1;
+
+        // Apply margin from UI
+        const marginPercent = parseInt(marginSlider?.value || "30") / 100;
+        const marginX = Math.round(contentW * marginPercent);
+        const marginY = Math.round(contentH * marginPercent);
+
+        const finalX = Math.max(0, minX - marginX);
+        const finalY = Math.max(0, minY - marginY);
+        const finalW = Math.min(targetWidth - finalX, contentW + (marginX * 2));
+        const finalH = Math.min(targetHeight - finalY, contentH + (marginY * 2));
+
         const tempCanvas = document.createElement("canvas");
         tempCanvas.width = targetWidth; tempCanvas.height = targetHeight;
         const tempCtx = tempCanvas.getContext("2d");
         const imgData = tempCtx.createImageData(targetWidth, targetHeight);
+        
+        // Babylon RTT pixels are Y-inverted
         for (let y = 0; y < targetHeight; y++) {
             for (let x = 0; x < targetWidth; x++) {
                 const sourceIndex = (y * targetWidth + x) * 4;
@@ -333,59 +370,24 @@ async function instantCapture() {
         }
         tempCtx.putImageData(imgData, 0, 0);
         
-        // Get margin from UI
-        const marginPercent = parseInt(marginSlider?.value || "30") / 100;
-        const marginFactor = 1 + (marginPercent * 2);
-        
-        const wRatio = (screenBounds.maxX - screenBounds.minX) * marginFactor;
-        const hRatio = (screenBounds.maxY - screenBounds.minY) * marginFactor;
-        
-        const xRatio = (screenBounds.minX + 0.5) - (wRatio * (marginPercent / marginFactor));
-        const yRatio = (screenBounds.minY + 0.5) - (hRatio * (marginPercent / marginFactor));
-
-        const finalX = Math.max(0, targetWidth * xRatio);
-        const finalY = Math.max(0, targetHeight * yRatio);
-        const finalW = Math.min(targetWidth - finalX, targetWidth * wRatio);
-        const finalH = Math.min(targetHeight - finalY, targetHeight * hRatio);
-        
         const saveCanvas = document.createElement("canvas");
         saveCanvas.width = finalW; saveCanvas.height = finalH;
         const ctx = saveCanvas.getContext("2d");
-        ctx.drawImage(tempCanvas, finalX, finalY, finalW, finalH, 0, 0, finalW, finalH);
+        
+        // Since we inverted Y in tempCanvas, we need to adjust finalY for the crop
+        // The pixel scan was done on Y-inverted data (Babylon default), 
+        // so we need to flip the Y-coordinates for the crop.
+        const flippedFinalY = targetHeight - (finalY + finalH);
+
+        ctx.drawImage(tempCanvas, finalX, flippedFinalY, finalW, finalH, 0, 0, finalW, finalH);
         
         const link = document.createElement("a");
         link.download = "bloxdschem_capture.png";
         link.href = saveCanvas.toDataURL("image/png");
         link.click();
         rtt.dispose();
+        log("[CAPTURE] pixel-perfect crop done");
     });
-}
-
-function getModelScreenBounds() {
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    let found = false;
-    const viewport = camera.viewport;
-    const transformMatrix = scene.getTransformMatrix();
-    scene.meshes.forEach(m => {
-        if (!m.isEnabled() || !m.isVisible || m.getTotalVertices() === 0) return;
-        const matrices = m.thinInstanceGetWorldMatrices();
-        const vertices = m.getVerticesData(BABYLON.VertexBuffer.PositionKind);
-        if (!matrices || !vertices) return;
-        
-        matrices.forEach(matrix => {
-            for (let i = 0; i < vertices.length; i += 3) {
-                const localPos = new BABYLON.Vector3(vertices[i], vertices[i+1], vertices[i+2]);
-                const worldPos = BABYLON.Vector3.TransformCoordinates(localPos, matrix);
-                const screenPos = BABYLON.Vector3.Project(worldPos, BABYLON.Matrix.Identity(), transformMatrix, viewport);
-                minX = Math.min(minX, screenPos.x - 0.5);
-                maxX = Math.max(maxX, screenPos.x - 0.5);
-                minY = Math.min(minY, screenPos.y - 0.5);
-                maxY = Math.max(maxY, screenPos.y - 0.5);
-                found = true;
-            }
-        });
-    });
-    return found ? { minX, maxX, minY, maxY } : { minX: -0.1, maxX: 0.1, minY: -0.1, maxY: 0.1 };
 }
 
 document.getElementById("buildBtn").onclick = async () => {
