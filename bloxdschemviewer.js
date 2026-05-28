@@ -1,4 +1,4 @@
-const VERSION = "alpha-0.26-pixel-perfect-crop";
+const VERSION = "alpha-0.26-final";
 
 const logEl = document.getElementById("log");
 
@@ -54,14 +54,6 @@ const FACE_ROTATION = {
     4: -90, // top
     5: -90  // bottom
 };
-
-const marginSlider = document.getElementById("marginSlider");
-const marginValue = document.getElementById("marginValue");
-if (marginSlider && marginValue) {
-    marginSlider.oninput = () => {
-        marginValue.textContent = `${marginSlider.value}%`;
-    };
-}
 
 async function extractTextures() {
     try {
@@ -298,7 +290,7 @@ function getModelWorldBounds() {
 }
 
 async function instantCapture() {
-    log("[CAPTURE] starting pixel-perfect crop...");
+    log("[CAPTURE] starting final zero-margin crop...");
     camera.alpha = Math.PI / 4;
     camera.beta = Math.atan(Math.SQRT2);
     const bounds = getModelWorldBounds();
@@ -316,7 +308,6 @@ async function instantCapture() {
     rtt.render();
     
     rtt.readPixels().then((pixels) => {
-        // Scan pixels to find the actual content boundaries
         let minX = targetWidth, maxX = 0, minY = targetHeight, maxY = 0;
         let found = false;
         for (let y = 0; y < targetHeight; y++) {
@@ -333,31 +324,19 @@ async function instantCapture() {
         }
 
         if (!found) {
-            log("[CAPTURE ERROR] No content found in render");
+            log("[CAPTURE ERROR] No content found");
             rtt.dispose();
             return;
         }
 
-        // Calculate content size
-        let contentW = maxX - minX + 1;
-        let contentH = maxY - minY + 1;
-
-        // Apply margin from UI
-        const marginPercent = parseInt(marginSlider?.value || "30") / 100;
-        const marginX = Math.round(contentW * marginPercent);
-        const marginY = Math.round(contentH * marginPercent);
-
-        const finalX = Math.max(0, minX - marginX);
-        const finalY = Math.max(0, minY - marginY);
-        const finalW = Math.min(targetWidth - finalX, contentW + (marginX * 2));
-        const finalH = Math.min(targetHeight - finalY, contentH + (marginY * 2));
+        const finalW = maxX - minX + 1;
+        const finalH = maxY - minY + 1;
 
         const tempCanvas = document.createElement("canvas");
         tempCanvas.width = targetWidth; tempCanvas.height = targetHeight;
         const tempCtx = tempCanvas.getContext("2d");
         const imgData = tempCtx.createImageData(targetWidth, targetHeight);
         
-        // Babylon RTT pixels are Y-inverted
         for (let y = 0; y < targetHeight; y++) {
             for (let x = 0; x < targetWidth; x++) {
                 const sourceIndex = (y * targetWidth + x) * 4;
@@ -374,19 +353,17 @@ async function instantCapture() {
         saveCanvas.width = finalW; saveCanvas.height = finalH;
         const ctx = saveCanvas.getContext("2d");
         
-        // Since we inverted Y in tempCanvas, we need to adjust finalY for the crop
-        // The pixel scan was done on Y-inverted data (Babylon default), 
-        // so we need to flip the Y-coordinates for the crop.
-        const flippedFinalY = targetHeight - (finalY + finalH);
+        // Correcting Y for the crop after inversion
+        const flippedFinalY = targetHeight - (minY + finalH);
 
-        ctx.drawImage(tempCanvas, finalX, flippedFinalY, finalW, finalH, 0, 0, finalW, finalH);
+        ctx.drawImage(tempCanvas, minX, flippedFinalY, finalW, finalH, 0, 0, finalW, finalH);
         
         const link = document.createElement("a");
-        link.download = "bloxdschem_capture.png";
+        link.download = "bloxdschem_capture_final.png";
         link.href = saveCanvas.toDataURL("image/png");
         link.click();
         rtt.dispose();
-        log("[CAPTURE] pixel-perfect crop done");
+        log("[CAPTURE] final zero-margin crop done");
     });
 }
 
