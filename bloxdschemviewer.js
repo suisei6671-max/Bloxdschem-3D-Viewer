@@ -1,4 +1,4 @@
-const VERSION = "alpha-0.16-rotation-fixed";
+const VERSION = "alpha-0.17-debug-enhanced";
 
 const logEl = document.getElementById("log");
 
@@ -52,6 +52,18 @@ let blockMap = {};
  * Bloxd faces: [left(0), right(1), top(2), bottom(3), front(4), back(5)]
  */
 const FACE_MAP = [4, 5, 1, 0, 2, 3];
+
+/**
+ * Debug colors for each Babylon face
+ */
+const FACE_DEBUG_COLORS = [
+    "#FF0000", // 0: front (Red)
+    "#00FF00", // 1: back (Green)
+    "#0000FF", // 2: right (Blue)
+    "#FFFF00", // 3: left (Yellow)
+    "#FF00FF", // 4: top (Magenta)
+    "#00FFFF"  // 5: bottom (Cyan)
+];
 
 /**
  * Rotation for each Babylon face (in degrees)
@@ -116,32 +128,54 @@ async function loadBlockData() {
 }
 
 /**
- * Creates a rotated texture using Canvas to ensure visual correctness
+ * Creates a rotated texture with debug borders
  */
-async function getRotatedTexture(name, deg) {
-    const key = `${name}_rot_${deg}`;
+async function getRotatedTexture(name, deg, faceIndex) {
+    const key = `${name}_rot_${deg}_f${faceIndex}`;
     if (textureCache.has(key)) return textureCache.get(key);
 
     const src = textureData[name];
-    if (!src) return null;
-
+    // If texture missing, we still create a colored box for debugging
+    
     return new Promise(resolve => {
         const img = new Image();
-        img.src = src;
-        img.onload = () => {
+        if (src) img.src = src;
+        
+        const process = () => {
             const c = document.createElement("canvas");
             c.width = 16;
             c.height = 16;
             const ctx = c.getContext("2d");
             ctx.imageSmoothingEnabled = false;
 
-            if (deg !== 0) {
-                ctx.translate(8, 8);
-                ctx.rotate(deg * Math.PI / 180);
-                ctx.drawImage(img, -8, -8, 16, 16);
-            } else {
-                ctx.drawImage(img, 0, 0, 16, 16);
+            // Fill background with debug color if texture missing
+            if (!src) {
+                ctx.fillStyle = FACE_DEBUG_COLORS[faceIndex];
+                ctx.fillRect(0, 0, 16, 16);
             }
+
+            ctx.save();
+            ctx.translate(8, 8);
+            if (deg !== 0) {
+                ctx.rotate(deg * Math.PI / 180);
+            }
+            
+            if (src && img.complete) {
+                ctx.drawImage(img, -8, -8, 16, 16);
+            }
+            ctx.restore();
+
+            // Draw debug border
+            ctx.strokeStyle = FACE_DEBUG_COLORS[faceIndex];
+            ctx.lineWidth = 2;
+            ctx.strokeRect(0, 0, 16, 16);
+            
+            // Draw face index text for absolute clarity
+            ctx.fillStyle = "white";
+            ctx.font = "bold 8px sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(faceIndex, 8, 8);
 
             const tex = new BABYLON.DynamicTexture(key, { width: 16, height: 16 }, scene, false, BABYLON.Texture.NEAREST_SAMPLINGMODE);
             const tctx = tex.getContext();
@@ -154,7 +188,13 @@ async function getRotatedTexture(name, deg) {
             textureCache.set(key, tex);
             resolve(tex);
         };
-        img.onerror = () => resolve(null);
+
+        if (src) {
+            img.onload = process;
+            img.onerror = process;
+        } else {
+            process();
+        }
     });
 }
 
@@ -248,7 +288,7 @@ async function parseSchem(file) {
 
 async function buildSchem(schem) {
     clearScene();
-    log("[BUILD] starting build with rotation fix");
+    log("[BUILD] starting debug build");
 
     const blockPositions = new Map();
 
@@ -275,11 +315,13 @@ async function buildSchem(schem) {
         const block = blockMap[blockId];
         if (!block) continue;
 
+        console.log(`[DEBUG] Processing Block ID: ${blockId}, Name: ${block.name}, Count: ${positions.length}`);
+
         const mesh = BABYLON.MeshBuilder.CreateBox("block_" + blockId, { size: 1 }, scene);
         
         if (typeof block.textureInfo === "string") {
             const mat = new BABYLON.StandardMaterial("mat_" + blockId, scene);
-            mat.diffuseTexture = await getRotatedTexture(block.textureInfo, 0);
+            mat.diffuseTexture = await getRotatedTexture(block.textureInfo, 0, 0);
             mat.specularColor = BABYLON.Color3.Black();
             mat.emissiveColor = new BABYLON.Color3(1, 1, 1);
             mat.disableLighting = true;
@@ -292,8 +334,10 @@ async function buildSchem(schem) {
                 const texName = block.textureInfo[texIndex];
                 const rot = FACE_ROTATION[face] ?? 0;
 
+                console.log(`  [FACE ${face}] BloxdFace: ${bloxdFace}, Texture: ${texName}, Rotation: ${rot}`);
+
                 const mat = new BABYLON.StandardMaterial(`mat_${blockId}_f${face}`, scene);
-                mat.diffuseTexture = await getRotatedTexture(texName, rot);
+                mat.diffuseTexture = await getRotatedTexture(texName, rot, face);
                 mat.specularColor = BABYLON.Color3.Black();
                 mat.emissiveColor = new BABYLON.Color3(1, 1, 1);
                 mat.disableLighting = true;
@@ -308,7 +352,6 @@ async function buildSchem(schem) {
             }
         }
 
-        // Apply Thin Instances for performance
         const matricesData = new Float32Array(positions.length * 16);
         for (let i = 0; i < positions.length; i++) {
             const matrix = BABYLON.Matrix.Translation(positions[i].x, positions[i].y, positions[i].z);
