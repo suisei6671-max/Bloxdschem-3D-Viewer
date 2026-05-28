@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0">
-    <title>Bloxd Schem Viewer - Optimized</title>
+    <title>Bloxd Schem Viewer - Final</title>
     <style>
         * {
             box-sizing: border-box;
@@ -90,18 +90,12 @@
 
     <div id="ui">
         <div class="title">Bloxd Schem Viewer</div>
-        <div class="ver">ver alpha-0.15-optimized</div>
+        <div class="ver">ver alpha-0.26-final</div>
         
         <input type="file" id="schemInput" accept=".bloxdschem">
         <button id="buildBtn">BUILD</button>
         <button id="captureBtn" onclick="window.instantCapture()" style="background: #4CAF50; margin-top: 10px;">CAPTURE (Zero Margin)</button>
         
-        <div style="margin-top: 10px; display: flex; align-items: center; gap: 10px;">
-            <label for="marginSlider" style="color: white; font-size: 12px;">Margin:</label>
-            <input type="range" id="marginSlider" min="0" max="100" value="30" style="flex: 1;">
-            <span id="marginValue" style="color: white; font-size: 12px; min-width: 30px;">30%</span>
-        </div>
-
         <pre id="log"></pre>
     </div>
 
