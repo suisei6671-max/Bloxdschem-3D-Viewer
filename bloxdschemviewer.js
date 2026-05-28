@@ -61,7 +61,7 @@ const FACE_ROTATION = {
     1: 0,  // back
     2: 90,  // right
     3: -90,  // left
-    4: -90, // top
+    4: 0, // top
     5: -90  // bottom
 };
 
