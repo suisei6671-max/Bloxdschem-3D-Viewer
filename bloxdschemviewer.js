@@ -1,4 +1,4 @@
-const VERSION = "alpha-0.26-final";
+const VERSION = "alpha-0.27-resolution-independent";
 
 const logEl = document.getElementById("log");
 
@@ -290,29 +290,49 @@ function getModelWorldBounds() {
 }
 
 async function instantCapture() {
-    log("[CAPTURE] starting final zero-margin crop...");
+    log("[CAPTURE] starting resolution-independent crop...");
+    
+    // Save current state
+    const oldAlpha = camera.alpha;
+    const oldBeta = camera.beta;
+    const oldOrthoTop = camera.orthoTop;
+    const oldOrthoBottom = camera.orthoBottom;
+    const oldOrthoLeft = camera.orthoLeft;
+    const oldOrthoRight = camera.orthoRight;
+
+    // Set fixed capture state
     camera.alpha = Math.PI / 4;
     camera.beta = Math.atan(Math.SQRT2);
+    
     const bounds = getModelWorldBounds();
-    if (bounds) camera.setTarget(BABYLON.Vector3.Center(bounds.min, bounds.max));
-    scene.render();
-    
-    const FINAL_SCALE = 5;
-    const targetWidth = Math.round(canvas.width * FINAL_SCALE);
-    const targetHeight = Math.round(canvas.height * FINAL_SCALE);
-    
-    const rtt = new BABYLON.RenderTargetTexture("highResRTT", { width: targetWidth, height: targetHeight }, scene, false, true);
+    if (bounds) {
+        camera.setTarget(BABYLON.Vector3.Center(bounds.min, bounds.max));
+        const size = bounds.max.subtract(bounds.min).length();
+        // Use a fixed ortho size for capture to ensure consistency
+        const captureOrtho = size * 0.6;
+        camera.orthoTop = captureOrtho;
+        camera.orthoBottom = -captureOrtho;
+        camera.orthoLeft = -captureOrtho; // Square aspect for RTT
+        camera.orthoRight = captureOrtho;
+    }
+
+    // Fixed high resolution for capture
+    const CAPTURE_SIZE = 4096;
+    const rtt = new BABYLON.RenderTargetTexture("highResRTT", CAPTURE_SIZE, scene, false, true);
     rtt.renderList = scene.meshes.filter(m => m.isEnabled() && m.isVisible);
     rtt.activeCamera = camera;
     rtt.clearColor = new BABYLON.Color4(0, 0, 0, 0);
+    
+    // Force render
+    scene.render();
     rtt.render();
     
     rtt.readPixels().then((pixels) => {
-        let minX = targetWidth, maxX = 0, minY = targetHeight, maxY = 0;
+        let minX = CAPTURE_SIZE, maxX = 0, minY = CAPTURE_SIZE, maxY = 0;
         let found = false;
-        for (let y = 0; y < targetHeight; y++) {
-            for (let x = 0; x < targetWidth; x++) {
-                const alpha = pixels[(y * targetWidth + x) * 4 + 3];
+        for (let y = 0; y < CAPTURE_SIZE; y++) {
+            for (let x = 0; x < CAPTURE_SIZE; x++) {
+                const alpha = pixels[(y * CAPTURE_SIZE + x) * 4 + 3];
                 if (alpha > 0) {
                     if (x < minX) minX = x;
                     if (x > maxX) maxX = x;
@@ -333,14 +353,14 @@ async function instantCapture() {
         const finalH = maxY - minY + 1;
 
         const tempCanvas = document.createElement("canvas");
-        tempCanvas.width = targetWidth; tempCanvas.height = targetHeight;
+        tempCanvas.width = CAPTURE_SIZE; tempCanvas.height = CAPTURE_SIZE;
         const tempCtx = tempCanvas.getContext("2d");
-        const imgData = tempCtx.createImageData(targetWidth, targetHeight);
+        const imgData = tempCtx.createImageData(CAPTURE_SIZE, CAPTURE_SIZE);
         
-        for (let y = 0; y < targetHeight; y++) {
-            for (let x = 0; x < targetWidth; x++) {
-                const sourceIndex = (y * targetWidth + x) * 4;
-                const targetIndex = ((targetHeight - 1 - y) * targetWidth + x) * 4;
+        for (let y = 0; y < CAPTURE_SIZE; y++) {
+            for (let x = 0; x < CAPTURE_SIZE; x++) {
+                const sourceIndex = (y * CAPTURE_SIZE + x) * 4;
+                const targetIndex = ((CAPTURE_SIZE - 1 - y) * CAPTURE_SIZE + x) * 4;
                 imgData.data[targetIndex] = pixels[sourceIndex];
                 imgData.data[targetIndex + 1] = pixels[sourceIndex + 1];
                 imgData.data[targetIndex + 2] = pixels[sourceIndex + 2];
@@ -353,17 +373,24 @@ async function instantCapture() {
         saveCanvas.width = finalW; saveCanvas.height = finalH;
         const ctx = saveCanvas.getContext("2d");
         
-        // Correcting Y for the crop after inversion
-        const flippedFinalY = targetHeight - (minY + finalH);
-
+        const flippedFinalY = CAPTURE_SIZE - (minY + finalH);
         ctx.drawImage(tempCanvas, minX, flippedFinalY, finalW, finalH, 0, 0, finalW, finalH);
         
         const link = document.createElement("a");
-        link.download = "bloxdschem_capture_final.png";
+        link.download = "bloxdschem_capture_fixed.png";
         link.href = saveCanvas.toDataURL("image/png");
         link.click();
+        
+        // Restore state
+        camera.alpha = oldAlpha;
+        camera.beta = oldBeta;
+        camera.orthoTop = oldOrthoTop;
+        camera.orthoBottom = oldOrthoBottom;
+        camera.orthoLeft = oldOrthoLeft;
+        camera.orthoRight = oldOrthoRight;
+        
         rtt.dispose();
-        log("[CAPTURE] final zero-margin crop done");
+        log("[CAPTURE] resolution-independent crop done");
     });
 }
 
@@ -382,6 +409,6 @@ document.getElementById("buildBtn").onclick = async () => {
 
 window.instantCapture = instantCapture;
 engine.runRenderLoop(() => { scene.render(); });
-window.addEventListener("resize", () => { engine.resize(); updateOrtho(10); });
+window.addEventListener("resize", () => { engine.resize(); updateOrtho(camera.orthoTop || 10); });
 updateOrtho(10);
 log("[READY]");
