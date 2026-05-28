@@ -1,18 +1,13 @@
-const VERSION = "alpha-0.21-capture-fixed";
+const VERSION = "alpha-0.22-visibility-fixed";
 
 const logEl = document.getElementById("log");
 
 function log(...a) {
     console.log(...a);
-    logEl.textContent += a.map(v => {
-        if (typeof v === "string") return v;
-        try {
-            return JSON.stringify(v, null, 2);
-        } catch {
-            return String(v);
-        }
-    }).join(" ") + "\n";
-    logEl.scrollTop = logEl.scrollHeight;
+    if (logEl) {
+        logEl.textContent += a.map(v => typeof v === "string" ? v : JSON.stringify(v)).join(" ") + "\n";
+        logEl.scrollTop = logEl.scrollHeight;
+    }
 }
 
 log("[BOOT]", VERSION);
@@ -51,9 +46,6 @@ let blockMap = {};
 
 const FACE_MAP = [4, 5, 1, 0, 2, 3];
 
-/**
- * Final Rotation Settings
- */
 const FACE_ROTATION = {
     0: 0,  // front
     1: 0,  // back
@@ -258,7 +250,9 @@ async function buildSchem(schem) {
 }
 
 function updateOrtho(val) {
-    const aspect = canvas.width / canvas.height;
+    const w = canvas.width || 800;
+    const h = canvas.height || 600;
+    const aspect = w / h;
     camera.orthoTop = val;
     camera.orthoBottom = -val;
     camera.orthoLeft = -val * aspect;
@@ -306,11 +300,11 @@ async function instantCapture() {
         }
         tempCtx.putImageData(imgData, 0, 0);
         
-        // Apply 1/2 size offset to fix the top-left alignment issue
         const wRatio = bounds.maxX - bounds.minX;
         const hRatio = bounds.maxY - bounds.minY;
-        const xRatio = bounds.minX + 0.5 - (wRatio / 2);
-        const yRatio = bounds.minY + 0.5 - (hRatio / 2);
+        // Correcting the crop position based on user advice
+        const xRatio = (bounds.minX + 0.5);
+        const yRatio = (bounds.minY + 0.5);
 
         const finalX = targetWidth * xRatio;
         const finalY = targetHeight * yRatio;
@@ -368,4 +362,5 @@ document.getElementById("buildBtn").onclick = async () => {
 window.instantCapture = instantCapture;
 engine.runRenderLoop(() => { scene.render(); });
 window.addEventListener("resize", () => { engine.resize(); updateOrtho(10); });
+updateOrtho(10);
 log("[READY]");
