@@ -1,4 +1,4 @@
-const VERSION = "alpha-0.24-instance-bounds-fixed";
+const VERSION = "alpha-0.25-dynamic-margin";
 
 const logEl = document.getElementById("log");
 
@@ -54,6 +54,15 @@ const FACE_ROTATION = {
     4: -90, // top
     5: -90  // bottom
 };
+
+// UI Elements for Margin
+const marginSlider = document.getElementById("marginSlider");
+const marginValue = document.getElementById("marginValue");
+if (marginSlider && marginValue) {
+    marginSlider.oninput = () => {
+        marginValue.textContent = `${marginSlider.value}%`;
+    };
+}
 
 async function extractTextures() {
     try {
@@ -247,7 +256,6 @@ async function buildSchem(schem) {
     }
     log("[DONE] total blocks:", totalPlaced);
     
-    // Focus camera on the build
     const bounds = getModelWorldBounds();
     if (bounds) {
         camera.setTarget(BABYLON.Vector3.Center(bounds.min, bounds.max));
@@ -272,8 +280,6 @@ function getModelWorldBounds() {
     let found = false;
     scene.meshes.forEach(m => {
         if (!m.isEnabled() || !m.isVisible || m.getTotalVertices() === 0) return;
-        // Thin instances bounds are not included in hierarchyBoundingVectors by default
-        // We need to calculate them manually based on instance matrices
         const matrices = m.thinInstanceGetWorldMatrices();
         if (matrices && matrices.length > 0) {
             const localMin = m.getBoundingInfo().boundingBox.minimum;
@@ -327,13 +333,15 @@ async function instantCapture() {
         }
         tempCtx.putImageData(imgData, 0, 0);
         
-        // Add 30% margin to ensure nothing is cut
-        const wRatio = (screenBounds.maxX - screenBounds.minX) * 1.3;
-        const hRatio = (screenBounds.maxY - screenBounds.minY) * 1.3;
+        // Get margin from UI
+        const marginPercent = parseInt(marginSlider?.value || "30") / 100;
+        const marginFactor = 1 + (marginPercent * 2);
         
-        // User advice: Offset by half size
-        const xRatio = (screenBounds.minX + 0.5) - (wRatio * 0.15);
-        const yRatio = (screenBounds.minY + 0.5) - (hRatio * 0.15);
+        const wRatio = (screenBounds.maxX - screenBounds.minX) * marginFactor;
+        const hRatio = (screenBounds.maxY - screenBounds.minY) * marginFactor;
+        
+        const xRatio = (screenBounds.minX + 0.5) - (wRatio * (marginPercent / marginFactor));
+        const yRatio = (screenBounds.minY + 0.5) - (hRatio * (marginPercent / marginFactor));
 
         const finalX = Math.max(0, targetWidth * xRatio);
         const finalY = Math.max(0, targetHeight * yRatio);
