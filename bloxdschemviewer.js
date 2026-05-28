@@ -61,8 +61,8 @@ const FACE_ROTATION = {
     1: 90,  // back
     2: 90,  // right
     3: 90,  // left
-    4: -90, // top
-    5: -90  // bottom
+    4: 0, // top
+    5: 0  // bottom
 };
 
 async function extractTextures() {
