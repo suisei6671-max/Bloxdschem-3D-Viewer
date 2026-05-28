@@ -1,4 +1,4 @@
-const VERSION = "alpha-0.22-visibility-fixed";
+const VERSION = "alpha-0.23-debug-visibility";
 
 const logEl = document.getElementById("log");
 
@@ -20,7 +20,7 @@ const engine = new BABYLON.Engine(canvas, true, {
 });
 
 const scene = new BABYLON.Scene(engine);
-scene.clearColor = new BABYLON.Color4(0, 0, 0, 0);
+scene.clearColor = new BABYLON.Color4(0.15, 0.16, 0.2, 1); // Dark grey for visibility
 
 const camera = new BABYLON.ArcRotateCamera(
     "cam",
@@ -56,6 +56,7 @@ const FACE_ROTATION = {
 };
 
 async function extractTextures() {
+    log("[TEXTURE] scanning...");
     try {
         const res = await fetch("./76njx.4.74e4a68f.chunk.js");
         const src = await res.text();
@@ -74,15 +75,18 @@ async function extractTextures() {
             const data = base64Map.get(id);
             if (data) textureData[name] = data;
         });
+        log("[TEXTURES] found:", Object.keys(textureData).length);
     } catch (e) { log("[TEXTURE ERROR]", e.message); }
 }
 
 async function loadBlockData() {
+    log("[BLOCKS] loading...");
     try {
         const res = await fetch("./blockData.json");
         const json = await res.json();
         blockMap = {};
         for (let i = 0; i < json.length; i++) blockMap[i] = json[i];
+        log("[BLOCKS] loaded:", Object.keys(blockMap).length);
     } catch (e) { log("[BLOCK DATA ERROR]", e.message); }
 }
 
@@ -207,7 +211,7 @@ function createFaceMesh(faceIndex, material) {
 
 async function buildSchem(schem) {
     clearScene();
-    log("[BUILD] starting build");
+    log("[BUILD] starting...");
     const blockPositions = new Map();
     for (const chunk of schem.chunks) {
         const decoded = decodeBlocks(new Uint8Array(chunk.blocks));
@@ -235,7 +239,14 @@ async function buildSchem(schem) {
             mat.disableLighting = true;
             mat.emissiveColor = new BABYLON.Color3(1, 1, 1);
             mat.backFaceCulling = true;
+            
             const faceMesh = createFaceMesh(face, mat);
+            
+            // Debug: Add outline to see the blocks even if textures fail
+            faceMesh.renderOutline = true;
+            faceMesh.outlineWidth = 0.05;
+            faceMesh.outlineColor = BABYLON.Color3.White();
+
             const matricesData = new Float32Array(positions.length * 16);
             for (let i = 0; i < positions.length; i++) {
                 const matrix = BABYLON.Matrix.Translation(positions[i].x, positions[i].y, positions[i].z);
@@ -246,22 +257,8 @@ async function buildSchem(schem) {
         totalPlaced += positions.length;
     }
     log("[DONE] total blocks:", totalPlaced);
-    updateOrtho(10);
-}
-
-function updateOrtho(val) {
-    const w = canvas.width || 800;
-    const h = canvas.height || 600;
-    const aspect = w / h;
-    camera.orthoTop = val;
-    camera.orthoBottom = -val;
-    camera.orthoLeft = -val * aspect;
-    camera.orthoRight = val * aspect;
-}
-
-async function instantCapture() {
-    camera.alpha = Math.PI / 4;
-    camera.beta = Math.atan(Math.SQRT2);
+    
+    // Auto-focus camera on the build
     let min = new BABYLON.Vector3(Infinity, Infinity, Infinity);
     let max = new BABYLON.Vector3(-Infinity, -Infinity, -Infinity);
     let found = false;
@@ -272,17 +269,43 @@ async function instantCapture() {
         max = BABYLON.Vector3.Maximize(max, bounds.max);
         found = true;
     });
-    if (found) camera.setTarget(BABYLON.Vector3.Center(min, max));
+    if (found) {
+        camera.setTarget(BABYLON.Vector3.Center(min, max));
+        log("[CAMERA] focused on center:", camera.target.toString());
+    }
+    updateOrtho(20);
+}
+
+function updateOrtho(val) {
+    const w = canvas.width || 800;
+    const h = canvas.height || 600;
+    const aspect = w / h;
+    camera.orthoTop = val;
+    camera.orthoBottom = -val;
+    camera.orthoLeft = -val * aspect;
+    camera.orthoRight = val * aspect;
+    log("[CAMERA] ortho updated:", val);
+}
+
+async function instantCapture() {
+    log("[CAPTURE] starting...");
+    camera.alpha = Math.PI / 4;
+    camera.beta = Math.atan(Math.SQRT2);
+    
+    // Ensure everything is rendered
     scene.render();
+    
     const bounds = getModelCenterRelativeBounds();
     const FINAL_SCALE = 5;
     const targetWidth = Math.round(canvas.width * FINAL_SCALE);
     const targetHeight = Math.round(canvas.height * FINAL_SCALE);
+    
     const rtt = new BABYLON.RenderTargetTexture("highResRTT", { width: targetWidth, height: targetHeight }, scene, false, true);
     rtt.renderList = scene.meshes.filter(m => m.isEnabled() && m.isVisible);
     rtt.activeCamera = camera;
     rtt.clearColor = new BABYLON.Color4(0, 0, 0, 0);
     rtt.render();
+    
     rtt.readPixels().then((pixels) => {
         const tempCanvas = document.createElement("canvas");
         tempCanvas.width = targetWidth; tempCanvas.height = targetHeight;
@@ -300,25 +323,28 @@ async function instantCapture() {
         }
         tempCtx.putImageData(imgData, 0, 0);
         
-        const wRatio = bounds.maxX - bounds.minX;
-        const hRatio = bounds.maxY - bounds.minY;
-        // Correcting the crop position based on user advice
-        const xRatio = (bounds.minX + 0.5);
-        const yRatio = (bounds.minY + 0.5);
+        // Add 20% margin to the bounds
+        const wRatio = (bounds.maxX - bounds.minX) * 1.2;
+        const hRatio = (bounds.maxY - bounds.minY) * 1.2;
+        const xRatio = (bounds.minX + 0.5) - (wRatio * 0.1);
+        const yRatio = (bounds.minY + 0.5) - (hRatio * 0.1);
 
-        const finalX = targetWidth * xRatio;
-        const finalY = targetHeight * yRatio;
-        const finalW = targetWidth * wRatio;
-        const finalH = targetHeight * hRatio;
+        const finalX = Math.max(0, targetWidth * xRatio);
+        const finalY = Math.max(0, targetHeight * yRatio);
+        const finalW = Math.min(targetWidth - finalX, targetWidth * wRatio);
+        const finalH = Math.min(targetHeight - finalY, targetHeight * hRatio);
+        
         const saveCanvas = document.createElement("canvas");
         saveCanvas.width = finalW; saveCanvas.height = finalH;
         const ctx = saveCanvas.getContext("2d");
         ctx.drawImage(tempCanvas, finalX, finalY, finalW, finalH, 0, 0, finalW, finalH);
+        
         const link = document.createElement("a");
         link.download = "bloxdschem_capture.png";
         link.href = saveCanvas.toDataURL("image/png");
         link.click();
         rtt.dispose();
+        log("[CAPTURE] done");
     });
 }
 
@@ -361,6 +387,12 @@ document.getElementById("buildBtn").onclick = async () => {
 
 window.instantCapture = instantCapture;
 engine.runRenderLoop(() => { scene.render(); });
-window.addEventListener("resize", () => { engine.resize(); updateOrtho(10); });
-updateOrtho(10);
+window.addEventListener("resize", () => { engine.resize(); updateOrtho(20); });
+
+// Initial setup
+setTimeout(() => {
+    engine.resize();
+    updateOrtho(20);
+}, 500);
+
 log("[READY]");
