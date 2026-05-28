@@ -1,4 +1,4 @@
-const VERSION = "alpha-0.23-debug-visibility";
+const VERSION = "alpha-0.24-instance-bounds-fixed";
 
 const logEl = document.getElementById("log");
 
@@ -20,7 +20,7 @@ const engine = new BABYLON.Engine(canvas, true, {
 });
 
 const scene = new BABYLON.Scene(engine);
-scene.clearColor = new BABYLON.Color4(0.15, 0.16, 0.2, 1); // Dark grey for visibility
+scene.clearColor = new BABYLON.Color4(0, 0, 0, 0);
 
 const camera = new BABYLON.ArcRotateCamera(
     "cam",
@@ -56,7 +56,6 @@ const FACE_ROTATION = {
 };
 
 async function extractTextures() {
-    log("[TEXTURE] scanning...");
     try {
         const res = await fetch("./76njx.4.74e4a68f.chunk.js");
         const src = await res.text();
@@ -75,18 +74,15 @@ async function extractTextures() {
             const data = base64Map.get(id);
             if (data) textureData[name] = data;
         });
-        log("[TEXTURES] found:", Object.keys(textureData).length);
     } catch (e) { log("[TEXTURE ERROR]", e.message); }
 }
 
 async function loadBlockData() {
-    log("[BLOCKS] loading...");
     try {
         const res = await fetch("./blockData.json");
         const json = await res.json();
         blockMap = {};
         for (let i = 0; i < json.length; i++) blockMap[i] = json[i];
-        log("[BLOCKS] loaded:", Object.keys(blockMap).length);
     } catch (e) { log("[BLOCK DATA ERROR]", e.message); }
 }
 
@@ -239,14 +235,7 @@ async function buildSchem(schem) {
             mat.disableLighting = true;
             mat.emissiveColor = new BABYLON.Color3(1, 1, 1);
             mat.backFaceCulling = true;
-            
             const faceMesh = createFaceMesh(face, mat);
-            
-            // Debug: Add outline to see the blocks even if textures fail
-            faceMesh.renderOutline = true;
-            faceMesh.outlineWidth = 0.05;
-            faceMesh.outlineColor = BABYLON.Color3.White();
-
             const matricesData = new Float32Array(positions.length * 16);
             for (let i = 0; i < positions.length; i++) {
                 const matrix = BABYLON.Matrix.Translation(positions[i].x, positions[i].y, positions[i].z);
@@ -258,22 +247,13 @@ async function buildSchem(schem) {
     }
     log("[DONE] total blocks:", totalPlaced);
     
-    // Auto-focus camera on the build
-    let min = new BABYLON.Vector3(Infinity, Infinity, Infinity);
-    let max = new BABYLON.Vector3(-Infinity, -Infinity, -Infinity);
-    let found = false;
-    scene.meshes.forEach(m => {
-        if (!m.isEnabled() || !m.isVisible || m.getTotalVertices() === 0) return;
-        const bounds = m.getHierarchyBoundingVectors();
-        min = BABYLON.Vector3.Minimize(min, bounds.min);
-        max = BABYLON.Vector3.Maximize(max, bounds.max);
-        found = true;
-    });
-    if (found) {
-        camera.setTarget(BABYLON.Vector3.Center(min, max));
-        log("[CAMERA] focused on center:", camera.target.toString());
+    // Focus camera on the build
+    const bounds = getModelWorldBounds();
+    if (bounds) {
+        camera.setTarget(BABYLON.Vector3.Center(bounds.min, bounds.max));
+        const size = bounds.max.subtract(bounds.min).length();
+        updateOrtho(size * 0.6);
     }
-    updateOrtho(20);
 }
 
 function updateOrtho(val) {
@@ -284,18 +264,42 @@ function updateOrtho(val) {
     camera.orthoBottom = -val;
     camera.orthoLeft = -val * aspect;
     camera.orthoRight = val * aspect;
-    log("[CAMERA] ortho updated:", val);
+}
+
+function getModelWorldBounds() {
+    let min = new BABYLON.Vector3(Infinity, Infinity, Infinity);
+    let max = new BABYLON.Vector3(-Infinity, -Infinity, -Infinity);
+    let found = false;
+    scene.meshes.forEach(m => {
+        if (!m.isEnabled() || !m.isVisible || m.getTotalVertices() === 0) return;
+        // Thin instances bounds are not included in hierarchyBoundingVectors by default
+        // We need to calculate them manually based on instance matrices
+        const matrices = m.thinInstanceGetWorldMatrices();
+        if (matrices && matrices.length > 0) {
+            const localMin = m.getBoundingInfo().boundingBox.minimum;
+            const localMax = m.getBoundingInfo().boundingBox.maximum;
+            matrices.forEach(matrix => {
+                const worldMin = BABYLON.Vector3.TransformCoordinates(localMin, matrix);
+                const worldMax = BABYLON.Vector3.TransformCoordinates(localMax, matrix);
+                min = BABYLON.Vector3.Minimize(min, worldMin);
+                min = BABYLON.Vector3.Minimize(min, worldMax);
+                max = BABYLON.Vector3.Maximize(max, worldMin);
+                max = BABYLON.Vector3.Maximize(max, worldMax);
+                found = true;
+            });
+        }
+    });
+    return found ? { min, max } : null;
 }
 
 async function instantCapture() {
-    log("[CAPTURE] starting...");
     camera.alpha = Math.PI / 4;
     camera.beta = Math.atan(Math.SQRT2);
-    
-    // Ensure everything is rendered
+    const bounds = getModelWorldBounds();
+    if (bounds) camera.setTarget(BABYLON.Vector3.Center(bounds.min, bounds.max));
     scene.render();
     
-    const bounds = getModelCenterRelativeBounds();
+    const screenBounds = getModelScreenBounds();
     const FINAL_SCALE = 5;
     const targetWidth = Math.round(canvas.width * FINAL_SCALE);
     const targetHeight = Math.round(canvas.height * FINAL_SCALE);
@@ -323,11 +327,13 @@ async function instantCapture() {
         }
         tempCtx.putImageData(imgData, 0, 0);
         
-        // Add 20% margin to the bounds
-        const wRatio = (bounds.maxX - bounds.minX) * 1.2;
-        const hRatio = (bounds.maxY - bounds.minY) * 1.2;
-        const xRatio = (bounds.minX + 0.5) - (wRatio * 0.1);
-        const yRatio = (bounds.minY + 0.5) - (hRatio * 0.1);
+        // Add 30% margin to ensure nothing is cut
+        const wRatio = (screenBounds.maxX - screenBounds.minX) * 1.3;
+        const hRatio = (screenBounds.maxY - screenBounds.minY) * 1.3;
+        
+        // User advice: Offset by half size
+        const xRatio = (screenBounds.minX + 0.5) - (wRatio * 0.15);
+        const yRatio = (screenBounds.minY + 0.5) - (hRatio * 0.15);
 
         const finalX = Math.max(0, targetWidth * xRatio);
         const finalY = Math.max(0, targetHeight * yRatio);
@@ -344,30 +350,32 @@ async function instantCapture() {
         link.href = saveCanvas.toDataURL("image/png");
         link.click();
         rtt.dispose();
-        log("[CAPTURE] done");
     });
 }
 
-function getModelCenterRelativeBounds() {
+function getModelScreenBounds() {
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
     let found = false;
     const viewport = camera.viewport;
     const transformMatrix = scene.getTransformMatrix();
     scene.meshes.forEach(m => {
         if (!m.isEnabled() || !m.isVisible || m.getTotalVertices() === 0) return;
+        const matrices = m.thinInstanceGetWorldMatrices();
         const vertices = m.getVerticesData(BABYLON.VertexBuffer.PositionKind);
-        if (!vertices) return;
-        const worldMatrix = m.getWorldMatrix();
-        for (let i = 0; i < vertices.length; i += 3) {
-            const localPos = new BABYLON.Vector3(vertices[i], vertices[i+1], vertices[i+2]);
-            const worldPos = BABYLON.Vector3.TransformCoordinates(localPos, worldMatrix);
-            const screenPos = BABYLON.Vector3.Project(worldPos, BABYLON.Matrix.Identity(), transformMatrix, viewport);
-            minX = Math.min(minX, screenPos.x - 0.5);
-            maxX = Math.max(maxX, screenPos.x - 0.5);
-            minY = Math.min(minY, screenPos.y - 0.5);
-            maxY = Math.max(maxY, screenPos.y - 0.5);
-            found = true;
-        }
+        if (!matrices || !vertices) return;
+        
+        matrices.forEach(matrix => {
+            for (let i = 0; i < vertices.length; i += 3) {
+                const localPos = new BABYLON.Vector3(vertices[i], vertices[i+1], vertices[i+2]);
+                const worldPos = BABYLON.Vector3.TransformCoordinates(localPos, matrix);
+                const screenPos = BABYLON.Vector3.Project(worldPos, BABYLON.Matrix.Identity(), transformMatrix, viewport);
+                minX = Math.min(minX, screenPos.x - 0.5);
+                maxX = Math.max(maxX, screenPos.x - 0.5);
+                minY = Math.min(minY, screenPos.y - 0.5);
+                maxY = Math.max(maxY, screenPos.y - 0.5);
+                found = true;
+            }
+        });
     });
     return found ? { minX, maxX, minY, maxY } : { minX: -0.1, maxX: 0.1, minY: -0.1, maxY: 0.1 };
 }
@@ -387,12 +395,6 @@ document.getElementById("buildBtn").onclick = async () => {
 
 window.instantCapture = instantCapture;
 engine.runRenderLoop(() => { scene.render(); });
-window.addEventListener("resize", () => { engine.resize(); updateOrtho(20); });
-
-// Initial setup
-setTimeout(() => {
-    engine.resize();
-    updateOrtho(20);
-}, 500);
-
+window.addEventListener("resize", () => { engine.resize(); updateOrtho(10); });
+updateOrtho(10);
 log("[READY]");
