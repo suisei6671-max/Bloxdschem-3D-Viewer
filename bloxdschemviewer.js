@@ -1,4 +1,4 @@
-const VERSION = "alpha-0.20-capture-ready";
+const VERSION = "alpha-0.21-capture-fixed";
 
 const logEl = document.getElementById("log");
 
@@ -25,7 +25,7 @@ const engine = new BABYLON.Engine(canvas, true, {
 });
 
 const scene = new BABYLON.Scene(engine);
-scene.clearColor = new BABYLON.Color4(0, 0, 0, 0); // Transparent for capture
+scene.clearColor = new BABYLON.Color4(0, 0, 0, 0);
 
 const camera = new BABYLON.ArcRotateCamera(
     "cam",
@@ -49,14 +49,10 @@ const textureData = {};
 const textureCache = new Map();
 let blockMap = {};
 
-/**
- * Babylon faces: 0:front, 1:back, 2:right, 3:left, 4:top, 5:bottom
- * Bloxd faces: [left(0), right(1), top(2), bottom(3), front(4), back(5)]
- */
 const FACE_MAP = [4, 5, 1, 0, 2, 3];
 
 /**
- * New Rotation settings
+ * Final Rotation Settings
  */
 const FACE_ROTATION = {
     0: 0,  // front
@@ -68,7 +64,6 @@ const FACE_ROTATION = {
 };
 
 async function extractTextures() {
-    log("[TEXTURE] scanning");
     try {
         const res = await fetch("./76njx.4.74e4a68f.chunk.js");
         const src = await res.text();
@@ -87,10 +82,7 @@ async function extractTextures() {
             const data = base64Map.get(id);
             if (data) textureData[name] = data;
         });
-        log("[TEXTURES] loaded", Object.keys(textureData).length);
-    } catch (e) {
-        log("[TEXTURE ERROR]", e.message);
-    }
+    } catch (e) { log("[TEXTURE ERROR]", e.message); }
 }
 
 async function loadBlockData() {
@@ -99,10 +91,7 @@ async function loadBlockData() {
         const json = await res.json();
         blockMap = {};
         for (let i = 0; i < json.length; i++) blockMap[i] = json[i];
-        log("[BLOCKS] loaded", Object.keys(blockMap).length);
-    } catch (e) {
-        log("[BLOCK DATA ERROR]", e.message);
-    }
+    } catch (e) { log("[BLOCK DATA ERROR]", e.message); }
 }
 
 async function getRotatedTexture(name, deg) {
@@ -225,6 +214,7 @@ function createFaceMesh(faceIndex, material) {
 }
 
 async function buildSchem(schem) {
+    clearScene();
     log("[BUILD] starting build");
     const blockPositions = new Map();
     for (const chunk of schem.chunks) {
@@ -275,9 +265,6 @@ function updateOrtho(val) {
     camera.orthoRight = val * aspect;
 }
 
-/**
- * Instant Capture (Zero Margin, 5x Scale)
- */
 async function instantCapture() {
     camera.alpha = Math.PI / 4;
     camera.beta = Math.atan(Math.SQRT2);
@@ -318,10 +305,13 @@ async function instantCapture() {
             }
         }
         tempCtx.putImageData(imgData, 0, 0);
-        const xRatio = bounds.minX + 0.5;
-        const yRatio = bounds.minY + 0.5;
+        
+        // Apply 1/2 size offset to fix the top-left alignment issue
         const wRatio = bounds.maxX - bounds.minX;
         const hRatio = bounds.maxY - bounds.minY;
+        const xRatio = bounds.minX + 0.5 - (wRatio / 2);
+        const yRatio = bounds.minY + 0.5 - (hRatio / 2);
+
         const finalX = targetWidth * xRatio;
         const finalY = targetHeight * yRatio;
         const finalW = targetWidth * wRatio;
@@ -375,9 +365,7 @@ document.getElementById("buildBtn").onclick = async () => {
     } catch (e) { console.error(e); log("[ERROR]", e.message); }
 };
 
-// Expose capture function to window
 window.instantCapture = instantCapture;
-
 engine.runRenderLoop(() => { scene.render(); });
 window.addEventListener("resize", () => { engine.resize(); updateOrtho(10); });
 log("[READY]");
