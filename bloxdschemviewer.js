@@ -1,4 +1,4 @@
-const VERSION = "alpha-0.18-per-face-instances";
+const VERSION = "alpha-0.19-debug-restored";
 
 const logEl = document.getElementById("log");
 
@@ -52,6 +52,18 @@ let blockMap = {};
  * Bloxd faces: [left(0), right(1), top(2), bottom(3), front(4), back(5)]
  */
 const FACE_MAP = [4, 5, 1, 0, 2, 3];
+
+/**
+ * Debug colors for each Babylon face
+ */
+const FACE_DEBUG_COLORS = [
+    "#FF0000", // 0: front (Red)
+    "#00FF00", // 1: back (Green)
+    "#0000FF", // 2: right (Blue)
+    "#FFFF00", // 3: left (Yellow)
+    "#FF00FF", // 4: top (Magenta)
+    "#00FFFF"  // 5: bottom (Cyan)
+];
 
 /**
  * Rotation for each Babylon face (in degrees)
@@ -115,26 +127,52 @@ async function loadBlockData() {
     }
 }
 
-async function getRotatedTexture(name, deg) {
-    const key = `${name}_rot_${deg}`;
+/**
+ * Creates a rotated texture with debug borders and face numbers
+ */
+async function getRotatedTexture(name, deg, faceIndex) {
+    const key = `${name}_rot_${deg}_f${faceIndex}`;
     if (textureCache.has(key)) return textureCache.get(key);
 
     const src = textureData[name];
-    if (!src) return null;
-
+    
     return new Promise(resolve => {
         const img = new Image();
-        img.src = src;
-        img.onload = () => {
+        if (src) img.src = src;
+        
+        const process = () => {
             const c = document.createElement("canvas");
             c.width = 16;
             c.height = 16;
             const ctx = c.getContext("2d");
             ctx.imageSmoothingEnabled = false;
 
+            // Fill background with debug color if texture missing
+            if (!src) {
+                ctx.fillStyle = FACE_DEBUG_COLORS[faceIndex];
+                ctx.fillRect(0, 0, 16, 16);
+            }
+
+            ctx.save();
             ctx.translate(8, 8);
             if (deg !== 0) ctx.rotate(deg * Math.PI / 180);
-            ctx.drawImage(img, -8, -8, 16, 16);
+            
+            if (src && img.complete) {
+                ctx.drawImage(img, -8, -8, 16, 16);
+            }
+            ctx.restore();
+
+            // Draw debug border
+            ctx.strokeStyle = FACE_DEBUG_COLORS[faceIndex];
+            ctx.lineWidth = 2;
+            ctx.strokeRect(0, 0, 16, 16);
+            
+            // Draw face index text
+            ctx.fillStyle = "white";
+            ctx.font = "bold 8px sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(faceIndex, 8, 8);
 
             const tex = new BABYLON.DynamicTexture(key, { width: 16, height: 16 }, scene, false, BABYLON.Texture.NEAREST_SAMPLINGMODE);
             const tctx = tex.getContext();
@@ -147,7 +185,13 @@ async function getRotatedTexture(name, deg) {
             textureCache.set(key, tex);
             resolve(tex);
         };
-        img.onerror = () => resolve(null);
+
+        if (src) {
+            img.onload = process;
+            img.onerror = process;
+        } else {
+            process();
+        }
     });
 }
 
@@ -239,14 +283,10 @@ async function parseSchem(file) {
     return schem;
 }
 
-/**
- * Creates a single face mesh (Plane) for Thin Instances
- */
 function createFaceMesh(faceIndex, material) {
     const plane = BABYLON.MeshBuilder.CreatePlane(`face_${faceIndex}`, { size: 1 }, scene);
     plane.material = material;
     
-    // Rotate plane to match Babylon box face orientation
     switch(faceIndex) {
         case 0: // front
             plane.rotation.y = 0;
@@ -279,7 +319,7 @@ function createFaceMesh(faceIndex, material) {
 
 async function buildSchem(schem) {
     clearScene();
-    log("[BUILD] starting per-face optimized build");
+    log("[BUILD] starting per-face debug build");
 
     const blockPositions = new Map();
 
@@ -306,7 +346,8 @@ async function buildSchem(schem) {
         const block = blockMap[blockId];
         if (!block) continue;
 
-        // For each of the 6 faces
+        console.log(`[DEBUG] Block: ${block.name} (${blockId})`);
+
         for (let face = 0; face < 6; face++) {
             const bloxdFace = FACE_MAP[face];
             const texIndex = (typeof block.textureInfo === "string") ? 0 : (block.texturePerSide?.[bloxdFace] ?? 0);
@@ -314,15 +355,14 @@ async function buildSchem(schem) {
             const rot = FACE_ROTATION[face] ?? 0;
 
             const mat = new BABYLON.StandardMaterial(`mat_${blockId}_f${face}`, scene);
-            mat.diffuseTexture = await getRotatedTexture(texName, rot);
+            mat.diffuseTexture = await getRotatedTexture(texName, rot, face);
             mat.specularColor = BABYLON.Color3.Black();
             mat.emissiveColor = new BABYLON.Color3(1, 1, 1);
             mat.disableLighting = true;
-            mat.backFaceCulling = true; // Optimization
+            mat.backFaceCulling = true;
 
             const faceMesh = createFaceMesh(face, mat);
             
-            // Apply Thin Instances to this face
             const matricesData = new Float32Array(positions.length * 16);
             for (let i = 0; i < positions.length; i++) {
                 const matrix = BABYLON.Matrix.Translation(positions[i].x, positions[i].y, positions[i].z);
