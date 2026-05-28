@@ -57,11 +57,11 @@ const FACE_MAP = [4, 5, 1, 0, 2, 3];
  * Rotation for each Babylon face (in degrees)
  */
 const FACE_ROTATION = {
-    0: 0,  // front
-    1: 0,  // back
+    0: 90,  // front
+    1: 90,  // back
     2: 90,  // right
-    3: -90,  // left
-    4: 90, // top
+    3: 90,  // left
+    4: -90, // top
     5: -90  // bottom
 };
 
