@@ -1,4 +1,4 @@
-const VERSION = "alpha-0.28-perfect-crop";
+const VERSION = "alpha-0.29-new-strategy";
 
 const logEl = document.getElementById("log");
 
@@ -249,9 +249,10 @@ async function buildSchem(schem) {
     
     const bounds = getModelWorldBounds();
     if (bounds) {
-        camera.setTarget(BABYLON.Vector3.Center(bounds.min, bounds.max));
+        const center = BABYLON.Vector3.Center(bounds.min, bounds.max);
+        camera.setTarget(center);
         const size = bounds.max.subtract(bounds.min).length();
-        updateOrtho(size * 0.6);
+        updateOrtho(size * 0.8); // Slightly larger view to prevent clipping
     }
 }
 
@@ -290,7 +291,7 @@ function getModelWorldBounds() {
 }
 
 async function instantCapture() {
-    log("[CAPTURE] starting perfect zero-margin crop...");
+    log("[CAPTURE] starting new strategy (large capture + pixel crop)...");
     
     const oldAlpha = camera.alpha;
     const oldBeta = camera.beta;
@@ -306,14 +307,16 @@ async function instantCapture() {
     if (bounds) {
         camera.setTarget(BABYLON.Vector3.Center(bounds.min, bounds.max));
         const size = bounds.max.subtract(bounds.min).length();
-        const captureOrtho = size * 0.6;
+        // Step 1: Set a very large ortho size to ensure the model is fully visible
+        const captureOrtho = size * 1.5; 
         camera.orthoTop = captureOrtho;
         camera.orthoBottom = -captureOrtho;
         camera.orthoLeft = -captureOrtho;
         camera.orthoRight = captureOrtho;
     }
 
-    const CAPTURE_SIZE = 4096;
+    // Step 2: Render at a reasonable resolution (approx 1/6th of previous 4096)
+    const CAPTURE_SIZE = 1024; 
     const rtt = new BABYLON.RenderTargetTexture("highResRTT", CAPTURE_SIZE, scene, false, true);
     rtt.renderList = scene.meshes.filter(m => m.isEnabled() && m.isVisible);
     rtt.activeCamera = camera;
@@ -323,7 +326,7 @@ async function instantCapture() {
     rtt.render();
     
     rtt.readPixels().then((pixels) => {
-        // Step 1: Find actual content bounds in the pixel data
+        // Step 3: Find actual content bounds in the pixel data
         let minX = CAPTURE_SIZE, maxX = 0, minY = CAPTURE_SIZE, maxY = 0;
         let found = false;
         for (let y = 0; y < CAPTURE_SIZE; y++) {
@@ -345,13 +348,12 @@ async function instantCapture() {
             return;
         }
 
-        // Step 2: Create a temporary canvas to handle the inversion and cropping
+        // Step 4: Create a temporary canvas to handle the inversion and cropping
         const tempCanvas = document.createElement("canvas");
         tempCanvas.width = CAPTURE_SIZE; tempCanvas.height = CAPTURE_SIZE;
         const tempCtx = tempCanvas.getContext("2d");
         const imgData = tempCtx.createImageData(CAPTURE_SIZE, CAPTURE_SIZE);
         
-        // Invert Y while copying pixels
         for (let y = 0; y < CAPTURE_SIZE; y++) {
             for (let x = 0; x < CAPTURE_SIZE; x++) {
                 const sourceIndex = (y * CAPTURE_SIZE + x) * 4;
@@ -364,8 +366,7 @@ async function instantCapture() {
         }
         tempCtx.putImageData(imgData, 0, 0);
         
-        // Step 3: Perform the final crop on a new canvas
-        // Note: minY/maxY are also inverted in the tempCanvas
+        // Step 5: Perform the final crop (shaving off transparent parts)
         const finalW = maxX - minX + 1;
         const finalH = maxY - minY + 1;
         const correctedMinY = CAPTURE_SIZE - maxY - 1;
@@ -376,7 +377,7 @@ async function instantCapture() {
         ctx.drawImage(tempCanvas, minX, correctedMinY, finalW, finalH, 0, 0, finalW, finalH);
         
         const link = document.createElement("a");
-        link.download = "bloxdschem_capture_perfect.png";
+        link.download = "bloxdschem_capture_optimized.png";
         link.href = saveCanvas.toDataURL("image/png");
         link.click();
         
@@ -389,7 +390,7 @@ async function instantCapture() {
         camera.orthoRight = oldOrthoRight;
         
         rtt.dispose();
-        log("[CAPTURE] perfect zero-margin crop done");
+        log("[CAPTURE] optimized zero-margin crop done");
     });
 }
 
