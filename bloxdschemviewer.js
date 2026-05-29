@@ -1,4 +1,4 @@
-const VERSION = "alpha-0.27-resolution-independent";
+const VERSION = "alpha-0.28-perfect-crop";
 
 const logEl = document.getElementById("log");
 
@@ -290,9 +290,8 @@ function getModelWorldBounds() {
 }
 
 async function instantCapture() {
-    log("[CAPTURE] starting resolution-independent crop...");
+    log("[CAPTURE] starting perfect zero-margin crop...");
     
-    // Save current state
     const oldAlpha = camera.alpha;
     const oldBeta = camera.beta;
     const oldOrthoTop = camera.orthoTop;
@@ -300,7 +299,6 @@ async function instantCapture() {
     const oldOrthoLeft = camera.orthoLeft;
     const oldOrthoRight = camera.orthoRight;
 
-    // Set fixed capture state
     camera.alpha = Math.PI / 4;
     camera.beta = Math.atan(Math.SQRT2);
     
@@ -308,26 +306,24 @@ async function instantCapture() {
     if (bounds) {
         camera.setTarget(BABYLON.Vector3.Center(bounds.min, bounds.max));
         const size = bounds.max.subtract(bounds.min).length();
-        // Use a fixed ortho size for capture to ensure consistency
         const captureOrtho = size * 0.6;
         camera.orthoTop = captureOrtho;
         camera.orthoBottom = -captureOrtho;
-        camera.orthoLeft = -captureOrtho; // Square aspect for RTT
+        camera.orthoLeft = -captureOrtho;
         camera.orthoRight = captureOrtho;
     }
 
-    // Fixed high resolution for capture
     const CAPTURE_SIZE = 4096;
     const rtt = new BABYLON.RenderTargetTexture("highResRTT", CAPTURE_SIZE, scene, false, true);
     rtt.renderList = scene.meshes.filter(m => m.isEnabled() && m.isVisible);
     rtt.activeCamera = camera;
     rtt.clearColor = new BABYLON.Color4(0, 0, 0, 0);
     
-    // Force render
     scene.render();
     rtt.render();
     
     rtt.readPixels().then((pixels) => {
+        // Step 1: Find actual content bounds in the pixel data
         let minX = CAPTURE_SIZE, maxX = 0, minY = CAPTURE_SIZE, maxY = 0;
         let found = false;
         for (let y = 0; y < CAPTURE_SIZE; y++) {
@@ -349,14 +345,13 @@ async function instantCapture() {
             return;
         }
 
-        const finalW = maxX - minX + 1;
-        const finalH = maxY - minY + 1;
-
+        // Step 2: Create a temporary canvas to handle the inversion and cropping
         const tempCanvas = document.createElement("canvas");
         tempCanvas.width = CAPTURE_SIZE; tempCanvas.height = CAPTURE_SIZE;
         const tempCtx = tempCanvas.getContext("2d");
         const imgData = tempCtx.createImageData(CAPTURE_SIZE, CAPTURE_SIZE);
         
+        // Invert Y while copying pixels
         for (let y = 0; y < CAPTURE_SIZE; y++) {
             for (let x = 0; x < CAPTURE_SIZE; x++) {
                 const sourceIndex = (y * CAPTURE_SIZE + x) * 4;
@@ -369,15 +364,19 @@ async function instantCapture() {
         }
         tempCtx.putImageData(imgData, 0, 0);
         
+        // Step 3: Perform the final crop on a new canvas
+        // Note: minY/maxY are also inverted in the tempCanvas
+        const finalW = maxX - minX + 1;
+        const finalH = maxY - minY + 1;
+        const correctedMinY = CAPTURE_SIZE - maxY - 1;
+
         const saveCanvas = document.createElement("canvas");
         saveCanvas.width = finalW; saveCanvas.height = finalH;
         const ctx = saveCanvas.getContext("2d");
-        
-        const flippedFinalY = CAPTURE_SIZE - (minY + finalH);
-        ctx.drawImage(tempCanvas, minX, flippedFinalY, finalW, finalH, 0, 0, finalW, finalH);
+        ctx.drawImage(tempCanvas, minX, correctedMinY, finalW, finalH, 0, 0, finalW, finalH);
         
         const link = document.createElement("a");
-        link.download = "bloxdschem_capture_fixed.png";
+        link.download = "bloxdschem_capture_perfect.png";
         link.href = saveCanvas.toDataURL("image/png");
         link.click();
         
@@ -390,7 +389,7 @@ async function instantCapture() {
         camera.orthoRight = oldOrthoRight;
         
         rtt.dispose();
-        log("[CAPTURE] resolution-independent crop done");
+        log("[CAPTURE] perfect zero-margin crop done");
     });
 }
 
