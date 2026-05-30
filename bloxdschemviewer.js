@@ -1,4 +1,4 @@
-const VERSION = "alpha-0.29-new-strategy";
+const VERSION = "alpha-0.30-wiki-style";
 
 const logEl = document.getElementById("log");
 
@@ -252,7 +252,7 @@ async function buildSchem(schem) {
         const center = BABYLON.Vector3.Center(bounds.min, bounds.max);
         camera.setTarget(center);
         const size = bounds.max.subtract(bounds.min).length();
-        updateOrtho(size * 0.8); // Slightly larger view to prevent clipping
+        updateOrtho(size * 0.8);
     }
 }
 
@@ -291,7 +291,7 @@ function getModelWorldBounds() {
 }
 
 async function instantCapture() {
-    log("[CAPTURE] starting new strategy (large capture + pixel crop)...");
+    log("[CAPTURE] starting...");
     
     const oldAlpha = camera.alpha;
     const oldBeta = camera.beta;
@@ -300,23 +300,40 @@ async function instantCapture() {
     const oldOrthoLeft = camera.orthoLeft;
     const oldOrthoRight = camera.orthoRight;
 
-    camera.alpha = Math.PI / 4;
-    camera.beta = Math.atan(Math.SQRT2);
+    // Angle Style Selection
+    const style = document.querySelector('input[name="angleStyle"]:checked').value;
+    if (style === "wiki") {
+        // Minecraft Wiki Style: Alpha = 45 deg, Beta = 35.264 deg (arctan(1/sqrt(2)))
+        // In Babylon, this is approx:
+        camera.alpha = -Math.PI / 4; // 45 deg
+        camera.beta = Math.PI / 3; // Approx 60 deg (Wiki uses a specific isometric angle)
+        // Let's use the exact Wiki angle:
+        camera.alpha = -0.785398; // -45 deg
+        camera.beta = 1.0472; // 60 deg
+    } else {
+        camera.alpha = Math.PI / 4;
+        camera.beta = Math.atan(Math.SQRT2);
+    }
     
     const bounds = getModelWorldBounds();
+    let captureBaseSize = 1024;
     if (bounds) {
         camera.setTarget(BABYLON.Vector3.Center(bounds.min, bounds.max));
         const size = bounds.max.subtract(bounds.min).length();
-        // Step 1: Set a very large ortho size to ensure the model is fully visible
         const captureOrtho = size * 1.5; 
         camera.orthoTop = captureOrtho;
         camera.orthoBottom = -captureOrtho;
         camera.orthoLeft = -captureOrtho;
         camera.orthoRight = captureOrtho;
+        
+        // Dynamic Resolution: Increase size for larger models
+        if (size > 32) captureBaseSize = 2048;
+        if (size > 64) captureBaseSize = 4096;
     }
 
-    // Step 2: Render at a reasonable resolution (approx 1/6th of previous 4096)
-    const CAPTURE_SIZE = 1024; 
+    const CAPTURE_SIZE = captureBaseSize; 
+    log("[CAPTURE] resolution:", CAPTURE_SIZE);
+    
     const rtt = new BABYLON.RenderTargetTexture("highResRTT", CAPTURE_SIZE, scene, false, true);
     rtt.renderList = scene.meshes.filter(m => m.isEnabled() && m.isVisible);
     rtt.activeCamera = camera;
@@ -326,7 +343,6 @@ async function instantCapture() {
     rtt.render();
     
     rtt.readPixels().then((pixels) => {
-        // Step 3: Find actual content bounds in the pixel data
         let minX = CAPTURE_SIZE, maxX = 0, minY = CAPTURE_SIZE, maxY = 0;
         let found = false;
         for (let y = 0; y < CAPTURE_SIZE; y++) {
@@ -348,7 +364,6 @@ async function instantCapture() {
             return;
         }
 
-        // Step 4: Create a temporary canvas to handle the inversion and cropping
         const tempCanvas = document.createElement("canvas");
         tempCanvas.width = CAPTURE_SIZE; tempCanvas.height = CAPTURE_SIZE;
         const tempCtx = tempCanvas.getContext("2d");
@@ -366,7 +381,6 @@ async function instantCapture() {
         }
         tempCtx.putImageData(imgData, 0, 0);
         
-        // Step 5: Perform the final crop (shaving off transparent parts)
         const finalW = maxX - minX + 1;
         const finalH = maxY - minY + 1;
         const correctedMinY = CAPTURE_SIZE - maxY - 1;
@@ -377,11 +391,10 @@ async function instantCapture() {
         ctx.drawImage(tempCanvas, minX, correctedMinY, finalW, finalH, 0, 0, finalW, finalH);
         
         const link = document.createElement("a");
-        link.download = "bloxdschem_capture_optimized.png";
+        link.download = `bloxdschem_capture_${style}.png`;
         link.href = saveCanvas.toDataURL("image/png");
         link.click();
         
-        // Restore state
         camera.alpha = oldAlpha;
         camera.beta = oldBeta;
         camera.orthoTop = oldOrthoTop;
@@ -390,7 +403,7 @@ async function instantCapture() {
         camera.orthoRight = oldOrthoRight;
         
         rtt.dispose();
-        log("[CAPTURE] optimized zero-margin crop done");
+        log("[CAPTURE] done");
     });
 }
 
