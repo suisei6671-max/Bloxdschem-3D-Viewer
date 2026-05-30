@@ -94,7 +94,12 @@
         
         <input type="file" id="schemInput" accept=".bloxdschem">
         <button id="buildBtn">BUILD</button>
-        <button id="captureBtn" onclick="window.instantCapture()" style="background: #4CAF50; margin-top: 10px;">CAPTURE (Zero Margin)</button>
+        <div style="margin: 10px 0; background: #333; padding: 10px; border-radius: 4px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: bold;">Angle Style:</label>
+                <label><input type="radio" name="angleStyle" value="default" checked> Default (Bloxd)</label><br>
+                <label><input type="radio" name="angleStyle" value="wiki"> Minecraft Wiki Style</label>
+            </div>
+            <button id="captureBtn" onclick="window.instantCapture()" style="background: #4CAF50; margin-top: 10px;">CAPTURE (Zero Margin)</button>
         
         <pre id="log"></pre>
     </div>
