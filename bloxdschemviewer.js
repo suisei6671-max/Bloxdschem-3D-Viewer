@@ -1,4 +1,4 @@
-const VERSION = "alpha-0.31-data-update";
+const VERSION = "alpha-0.32-texture-fix";
 
 const logEl = document.getElementById("log");
 
@@ -43,7 +43,7 @@ light.intensity = 2;
 const textureData = {};
 const textureCache = new Map();
 let blockMap = {};
-let currentSchemBlocks = []; // Array to store {id, x, y, z}
+let currentSchemBlocks = [];
 
 const FACE_MAP = [4, 5, 1, 0, 2, 3];
 
@@ -58,24 +58,59 @@ const FACE_ROTATION = {
 
 async function extractTextures() {
     try {
-        // Changed from 76njx.4.74e4a68f.chunk.js to images.js
+        log("[TEXTURE] Fetching images.js...");
         const res = await fetch("./images.js");
         const src = await res.text();
-        const pngRegex = /"\.\/([^"]+?)\.png":(\d+)/g;
-        const dataRegex = /(\d+):[^\n]*?exports\s*=\s*"([^"]+)"/g;
+        
+        // Improved regex to find all base64 images in the webpack-style bundle
+        // Matches: "data:image/png;base64,..."
+        const base64Regex = /data:image\/png;base64,[A-Za-z0-9+/=]+/g;
+        const allBase64 = src.match(base64Regex) || [];
+        log("[TEXTURE] Found", allBase64.length, "base64 strings");
+
+        // Improved regex to find filename to module ID mapping
+        // Matches: "./filename.png":12345
+        const pngToIdRegex = /"\.\/([^"]+?)\.png":(\d+)/g;
         const pngMap = new Map();
-        const base64Map = new Map();
         let m;
-        while ((m = pngRegex.exec(src)) !== null) pngMap.set(m[1], parseInt(m[2]));
-        while ((m = dataRegex.exec(src)) !== null) {
+        while ((m = pngToIdRegex.exec(src)) !== null) {
+            pngMap.set(m[1], parseInt(m[2]));
+        }
+        log("[TEXTURE] Found", pngMap.size, "filename mappings");
+
+        // Improved regex to find module ID to base64 mapping
+        // Matches: 12345:(...)exports="data:image..."
+        const idToDataRegex = /(\d+):\(.*?exports\s*=\s*"(data:image\/png;base64,[^"]+)"/g;
+        let count = 0;
+        while ((m = idToDataRegex.exec(src)) !== null) {
             const id = parseInt(m[1]);
             const data = m[2];
-            if (data.startsWith("data:image")) base64Map.set(id, data);
+            // Find which filename(s) map to this ID
+            pngMap.forEach((mappedId, name) => {
+                if (mappedId === id) {
+                    textureData[name] = data;
+                    count++;
+                }
+            });
         }
-        pngMap.forEach((id, name) => {
-            const data = base64Map.get(id);
-            if (data) textureData[name] = data;
-        });
+        
+        // Fallback: if the above failed, try a more aggressive approach
+        if (count === 0) {
+            log("[TEXTURE] Fallback extraction...");
+            const fallbackRegex = /(\d+):.*?exports\s*=\s*"(data:image\/png;base64,[^"]+)"/g;
+            while ((m = fallbackRegex.exec(src)) !== null) {
+                const id = parseInt(m[1]);
+                const data = m[2];
+                pngMap.forEach((mappedId, name) => {
+                    if (mappedId === id) {
+                        textureData[name] = data;
+                        count++;
+                    }
+                });
+            }
+        }
+
+        log("[TEXTURE] Successfully mapped", count, "textures");
     } catch (e) { log("[TEXTURE ERROR]", e.message); }
 }
 
@@ -84,14 +119,12 @@ async function loadBlockData() {
         const res = await fetch("./blockData.json");
         const json = await res.json();
         blockMap = {};
-        // Support both old array format and new object format if applicable
         if (Array.isArray(json)) {
             for (let i = 0; i < json.length; i++) blockMap[i] = json[i];
         } else {
-            // If it's a rootId based map or similar, we'll need to adjust
-            // For now, assuming it's still an array or we can index it
             blockMap = json;
         }
+        log("[BLOCK DATA] Loaded", Object.keys(blockMap).length, "entries");
     } catch (e) { log("[BLOCK DATA ERROR]", e.message); }
 }
 
@@ -99,7 +132,10 @@ async function getRotatedTexture(name, deg) {
     const key = `${name}_rot_${deg}`;
     if (textureCache.has(key)) return textureCache.get(key);
     const src = textureData[name];
-    if (!src) return null;
+    if (!src) {
+        // log("[TEXTURE MISSING]", name);
+        return null;
+    }
     return new Promise(resolve => {
         const img = new Image();
         img.src = src;
@@ -227,16 +263,11 @@ async function buildSchem(schem) {
             const blockId = rawId - 1;
             const pos = idxToXYZ(i);
             const worldPos = new BABYLON.Vector3(chunk.z * 32 + pos.z, chunk.y * 32 + pos.y, chunk.x * 32 + pos.x);
-            
-            // Store for external use
             currentSchemBlocks.push({ id: blockId, x: worldPos.x, y: worldPos.y, z: worldPos.z });
-            
             if (!blockPositions.has(blockId)) blockPositions.set(blockId, []);
             blockPositions.get(blockId).push(worldPos);
         }
     }
-    
-    // Expose currentSchemBlocks to window for user's custom function
     window.currentSchemBlocks = currentSchemBlocks;
     
     let totalPlaced = 0;
@@ -244,28 +275,29 @@ async function buildSchem(schem) {
         const block = blockMap[blockId];
         if (!block) continue;
         
-        // Basic support for new blockData structure
-        // If textureInfo is missing, try to find it in blockModel or similar
-        let textureInfo = block.textureInfo;
-        if (!textureInfo && block.blockModel) {
-            // Search for the base model data if needed
-            // For now, assuming textureInfo is still present as per user's note
-        }
+        const textureInfo = block.textureInfo;
+        if (!textureInfo) continue;
 
         for (let face = 0; face < 6; face++) {
             const bloxdFace = FACE_MAP[face];
-            const texIndex = (typeof textureInfo === "string") ? 0 : (block.texturePerSide?.[bloxdFace] ?? 0);
-            const texName = (typeof textureInfo === "string") ? textureInfo : (textureInfo ? textureInfo[texIndex] : null);
-            
+            // New logic: textureInfo is now a 6-element array matching FACE_MAP order
+            const texName = Array.isArray(textureInfo) ? textureInfo[bloxdFace] : textureInfo;
             if (!texName) continue;
 
             const rot = FACE_ROTATION[face] ?? 0;
             const mat = new BABYLON.StandardMaterial(`mat_${blockId}_f${face}`, scene);
-            mat.diffuseTexture = await getRotatedTexture(texName, rot);
+            const tex = await getRotatedTexture(texName, rot);
+            if (!tex) {
+                // Fallback color if texture missing
+                mat.diffuseColor = new BABYLON.Color3(0.8, 0.8, 0.8);
+            } else {
+                mat.diffuseTexture = tex;
+                mat.diffuseTexture.hasAlpha = true;
+            }
             mat.disableLighting = true;
             mat.emissiveColor = new BABYLON.Color3(1, 1, 1);
             mat.backFaceCulling = true;
-            mat.alphaMode = BABYLON.Engine.ALPHA_COMBINE; // Support transparency
+            mat.alphaMode = BABYLON.Engine.ALPHA_COMBINE;
 
             const faceMesh = createFaceMesh(face, mat);
             const matricesData = new Float32Array(positions.length * 16);
@@ -324,7 +356,6 @@ function getModelWorldBounds() {
 
 async function instantCapture() {
     log("[CAPTURE] starting...");
-    
     const oldAlpha = camera.alpha;
     const oldBeta = camera.beta;
     const oldOrthoTop = camera.orthoTop;
@@ -334,8 +365,8 @@ async function instantCapture() {
 
     const style = document.querySelector('input[name="angleStyle"]:checked').value;
     if (style === "wiki") {
-        camera.alpha = -0.785398; // -45 deg
-        camera.beta = 1.0472; // 60 deg
+        camera.alpha = -0.785398;
+        camera.beta = 1.0472;
     } else {
         camera.alpha = Math.PI / 4;
         camera.beta = Math.atan(Math.SQRT2);
@@ -351,7 +382,6 @@ async function instantCapture() {
         camera.orthoBottom = -captureOrtho;
         camera.orthoLeft = -captureOrtho;
         camera.orthoRight = captureOrtho;
-        
         if (size > 32) captureBaseSize = 2048;
         if (size > 64) captureBaseSize = 4096;
     }
@@ -393,7 +423,6 @@ async function instantCapture() {
         tempCanvas.width = CAPTURE_SIZE; tempCanvas.height = CAPTURE_SIZE;
         const tempCtx = tempCanvas.getContext("2d");
         const imgData = tempCtx.createImageData(CAPTURE_SIZE, CAPTURE_SIZE);
-        
         for (let y = 0; y < CAPTURE_SIZE; y++) {
             for (let x = 0; x < CAPTURE_SIZE; x++) {
                 const sourceIndex = (y * CAPTURE_SIZE + x) * 4;
@@ -405,28 +434,23 @@ async function instantCapture() {
             }
         }
         tempCtx.putImageData(imgData, 0, 0);
-        
         const finalW = maxX - minX + 1;
         const finalH = maxY - minY + 1;
         const correctedMinY = CAPTURE_SIZE - maxY - 1;
-
         const saveCanvas = document.createElement("canvas");
         saveCanvas.width = finalW; saveCanvas.height = finalH;
         const ctx = saveCanvas.getContext("2d");
         ctx.drawImage(tempCanvas, minX, correctedMinY, finalW, finalH, 0, 0, finalW, finalH);
-        
         const link = document.createElement("a");
         link.download = `bloxdschem_capture_${style}.png`;
         link.href = saveCanvas.toDataURL("image/png");
         link.click();
-        
         camera.alpha = oldAlpha;
         camera.beta = oldBeta;
         camera.orthoTop = oldOrthoTop;
         camera.orthoBottom = oldOrthoBottom;
         camera.orthoLeft = oldOrthoLeft;
         camera.orthoRight = oldOrthoRight;
-        
         rtt.dispose();
         log("[CAPTURE] done");
     });
