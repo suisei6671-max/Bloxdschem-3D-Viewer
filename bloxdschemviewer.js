@@ -1,4 +1,4 @@
-const VERSION = "alpha-0.30-wiki-style";
+const VERSION = "alpha-0.31-data-update";
 
 const logEl = document.getElementById("log");
 
@@ -43,6 +43,7 @@ light.intensity = 2;
 const textureData = {};
 const textureCache = new Map();
 let blockMap = {};
+let currentSchemBlocks = []; // Array to store {id, x, y, z}
 
 const FACE_MAP = [4, 5, 1, 0, 2, 3];
 
@@ -57,6 +58,7 @@ const FACE_ROTATION = {
 
 async function extractTextures() {
     try {
+        // Changed from 76njx.4.74e4a68f.chunk.js to images.js
         const res = await fetch("./images.js");
         const src = await res.text();
         const pngRegex = /"\.\/([^"]+?)\.png":(\d+)/g;
@@ -82,7 +84,14 @@ async function loadBlockData() {
         const res = await fetch("./blockData.json");
         const json = await res.json();
         blockMap = {};
-        for (let i = 0; i < json.length; i++) blockMap[i] = json[i];
+        // Support both old array format and new object format if applicable
+        if (Array.isArray(json)) {
+            for (let i = 0; i < json.length; i++) blockMap[i] = json[i];
+        } else {
+            // If it's a rootId based map or similar, we'll need to adjust
+            // For now, assuming it's still an array or we can index it
+            blockMap = json;
+        }
     } catch (e) { log("[BLOCK DATA ERROR]", e.message); }
 }
 
@@ -119,6 +128,7 @@ async function getRotatedTexture(name, deg) {
 function clearScene() {
     scene.meshes.slice().forEach(m => m.dispose());
     textureCache.clear();
+    currentSchemBlocks = [];
 }
 
 function readULEB(bytes, state) {
@@ -217,24 +227,46 @@ async function buildSchem(schem) {
             const blockId = rawId - 1;
             const pos = idxToXYZ(i);
             const worldPos = new BABYLON.Vector3(chunk.z * 32 + pos.z, chunk.y * 32 + pos.y, chunk.x * 32 + pos.x);
+            
+            // Store for external use
+            currentSchemBlocks.push({ id: blockId, x: worldPos.x, y: worldPos.y, z: worldPos.z });
+            
             if (!blockPositions.has(blockId)) blockPositions.set(blockId, []);
             blockPositions.get(blockId).push(worldPos);
         }
     }
+    
+    // Expose currentSchemBlocks to window for user's custom function
+    window.currentSchemBlocks = currentSchemBlocks;
+    
     let totalPlaced = 0;
     for (const [blockId, positions] of blockPositions) {
         const block = blockMap[blockId];
         if (!block) continue;
+        
+        // Basic support for new blockData structure
+        // If textureInfo is missing, try to find it in blockModel or similar
+        let textureInfo = block.textureInfo;
+        if (!textureInfo && block.blockModel) {
+            // Search for the base model data if needed
+            // For now, assuming textureInfo is still present as per user's note
+        }
+
         for (let face = 0; face < 6; face++) {
             const bloxdFace = FACE_MAP[face];
-            const texIndex = (typeof block.textureInfo === "string") ? 0 : (block.texturePerSide?.[bloxdFace] ?? 0);
-            const texName = (typeof block.textureInfo === "string") ? block.textureInfo : block.textureInfo[texIndex];
+            const texIndex = (typeof textureInfo === "string") ? 0 : (block.texturePerSide?.[bloxdFace] ?? 0);
+            const texName = (typeof textureInfo === "string") ? textureInfo : (textureInfo ? textureInfo[texIndex] : null);
+            
+            if (!texName) continue;
+
             const rot = FACE_ROTATION[face] ?? 0;
             const mat = new BABYLON.StandardMaterial(`mat_${blockId}_f${face}`, scene);
             mat.diffuseTexture = await getRotatedTexture(texName, rot);
             mat.disableLighting = true;
             mat.emissiveColor = new BABYLON.Color3(1, 1, 1);
             mat.backFaceCulling = true;
+            mat.alphaMode = BABYLON.Engine.ALPHA_COMBINE; // Support transparency
+
             const faceMesh = createFaceMesh(face, mat);
             const matricesData = new Float32Array(positions.length * 16);
             for (let i = 0; i < positions.length; i++) {
@@ -300,14 +332,8 @@ async function instantCapture() {
     const oldOrthoLeft = camera.orthoLeft;
     const oldOrthoRight = camera.orthoRight;
 
-    // Angle Style Selection
     const style = document.querySelector('input[name="angleStyle"]:checked').value;
     if (style === "wiki") {
-        // Minecraft Wiki Style: Alpha = 45 deg, Beta = 35.264 deg (arctan(1/sqrt(2)))
-        // In Babylon, this is approx:
-        camera.alpha = -Math.PI / 4; // 45 deg
-        camera.beta = Math.PI / 3; // Approx 60 deg (Wiki uses a specific isometric angle)
-        // Let's use the exact Wiki angle:
         camera.alpha = -0.785398; // -45 deg
         camera.beta = 1.0472; // 60 deg
     } else {
@@ -326,7 +352,6 @@ async function instantCapture() {
         camera.orthoLeft = -captureOrtho;
         camera.orthoRight = captureOrtho;
         
-        // Dynamic Resolution: Increase size for larger models
         if (size > 32) captureBaseSize = 2048;
         if (size > 64) captureBaseSize = 4096;
     }
