@@ -57,7 +57,7 @@ const FACE_ROTATION = {
 
 async function extractTextures() {
     try {
-        const res = await fetch("./76njx.4.74e4a68f.chunk.js");
+        const res = await fetch("./images.js");
         const src = await res.text();
         const pngRegex = /"\.\/([^"]+?)\.png":(\d+)/g;
         const dataRegex = /(\d+):[^\n]*?exports\s*=\s*"([^"]+)"/g;
