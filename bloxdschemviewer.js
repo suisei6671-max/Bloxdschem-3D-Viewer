@@ -1,4 +1,4 @@
-const VERSION = "alpha-0.35-coord-slab-overhaul";
+const VERSION = "alpha-0.36-slab-texture-rotation-fix";
 
 const logEl = document.getElementById("log");
 
@@ -211,12 +211,11 @@ function decodeBlocks(bytes) {
 }
 
 function idxToXYZ(i) {
-    // Re-ordered to match the observed coordinate distribution:
-    // Z is the fastest changing axis, X is the slowest.
-    return {
-        z: i % 32,
-        y: Math.floor(i / 32) % 32,
-        x: Math.floor(i / 1024)
+    // Matches もどす.html exactly
+    return { 
+        x: Math.floor(i / 1024), 
+        y: Math.floor(i / 32) % 32, 
+        z: i % 32 
     };
 }
 
@@ -345,36 +344,40 @@ async function buildSchem(schem) {
             continue;
         }
 
-        // Slab Logic
-        let scaling = new BABYLON.Vector3(1, 1, 1);
-        let offset = new BABYLON.Vector3(0, 0, 0);
-        
+        // Slab logic with rotation and texture mapping
+        let currentScaling = new BABYLON.Vector3(1, 1, 1);
+        let currentOffset = new BABYLON.Vector3(0, 0, 0);
+        let faceToTexMap = [...FACE_MAP]; // Default mapping
+
         if (block.model === "Slab") {
             const hp = block.halfblockPlacement ?? 0;
             if (hp === 0) { // Bottom
-                scaling.y = 0.5;
-                offset.y = -0.25;
+                currentScaling.y = 0.5; currentOffset.y = -0.25;
             } else if (hp === 1) { // Top
-                scaling.y = 0.5;
-                offset.y = 0.25;
+                currentScaling.y = 0.5; currentOffset.y = 0.25;
             } else if (hp === 2) { // Side
                 const rot = block.rot ?? 1;
+                // For side slabs, the "Top/Bottom" textures (index 2,3) move to the sides
                 if (rot === 1) { // Z-
-                    scaling.z = 0.5; offset.z = -0.25;
+                    currentScaling.z = 0.5; currentOffset.z = -0.25;
+                    faceToTexMap = [2, 3, 1, 0, 4, 5]; // Remap faces
                 } else if (rot === 2) { // X-
-                    scaling.x = 0.5; offset.x = -0.25;
+                    currentScaling.x = 0.5; currentOffset.x = -0.25;
+                    faceToTexMap = [1, 0, 2, 3, 4, 5]; // Remap faces
                 } else if (rot === 3) { // Z+
-                    scaling.z = 0.5; offset.z = 0.25;
+                    currentScaling.z = 0.5; currentOffset.z = 0.25;
+                    faceToTexMap = [3, 2, 1, 0, 4, 5]; // Remap faces
                 } else if (rot === 4) { // X+
-                    scaling.x = 0.5; offset.x = 0.25;
+                    currentScaling.x = 0.5; currentOffset.x = 0.25;
+                    faceToTexMap = [0, 1, 2, 3, 4, 5]; // Remap faces
                 }
             }
         }
 
         let facesCreated = 0;
         for (let face = 0; face < 6; face++) {
-            const bloxdFace = FACE_MAP[face];
-            const texName = Array.isArray(textureInfo) ? textureInfo[bloxdFace] : textureInfo;
+            const texIndex = faceToTexMap[face];
+            const texName = Array.isArray(textureInfo) ? textureInfo[texIndex] : textureInfo;
             if (!texName) continue;
 
             const rot = FACE_ROTATION[face] ?? 0;
@@ -391,7 +394,7 @@ async function buildSchem(schem) {
             mat.backFaceCulling = true;
             mat.alphaMode = BABYLON.Engine.ALPHA_COMBINE;
 
-            const faceMesh = createFaceMesh(face, mat, scaling, offset);
+            const faceMesh = createFaceMesh(face, mat, currentScaling, currentOffset);
             const matricesData = new Float32Array(positions.length * 16);
             for (let i = 0; i < positions.length; i++) {
                 const matrix = BABYLON.Matrix.Translation(positions[i].x, positions[i].y, positions[i].z);
