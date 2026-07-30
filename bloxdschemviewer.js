@@ -1,4 +1,4 @@
-const VERSION = "alpha-0.33-slab-support";
+const VERSION = "alpha-0.34-coord-zoom-fix";
 
 const logEl = document.getElementById("log");
 
@@ -26,12 +26,24 @@ const camera = new BABYLON.ArcRotateCamera(
     "cam",
     Math.PI / 4,
     Math.atan(Math.SQRT2),
-    40,
+    100,
     new BABYLON.Vector3(0, 0, 0),
     scene
 );
 camera.mode = BABYLON.Camera.ORTHOGRAPHIC_CAMERA;
-camera.attachControl(canvas, true);
+camera.attachControl(canvas, true, false); // Disable default zoom to handle it manually
+camera.minZ = -1000;
+camera.maxZ = 1000;
+
+// Custom Zoom for Orthographic Camera
+canvas.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const zoomSpeed = 0.1;
+    const delta = e.deltaY > 0 ? 1.1 : 0.9;
+    const currentTop = camera.orthoTop || 10;
+    const newTop = Math.max(0.1, Math.min(500, currentTop * delta));
+    updateOrtho(newTop);
+}, { passive: false });
 
 const light = new BABYLON.HemisphericLight(
     "light",
@@ -282,7 +294,12 @@ async function buildSchem(schem) {
             if (rawId === 0) continue;
             const blockId = rawId - 1;
             const pos = idxToXYZ(i);
-            const worldPos = new BABYLON.Vector3(chunk.z * 32 + pos.z, chunk.y * 32 + pos.y, chunk.x * 32 + pos.x);
+            // Corrected: chunk.x corresponds to pos.x, etc.
+            const worldPos = new BABYLON.Vector3(
+                chunk.x * 32 + pos.x, 
+                chunk.y * 32 + pos.y, 
+                chunk.z * 32 + pos.z
+            );
             currentSchemBlocks.push({ id: blockId, x: worldPos.x, y: worldPos.y, z: worldPos.z });
             if (!blockPositions.has(blockId)) blockPositions.set(blockId, []);
             blockPositions.get(blockId).push(worldPos);
