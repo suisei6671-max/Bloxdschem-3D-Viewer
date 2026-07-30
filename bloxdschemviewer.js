@@ -1,4 +1,4 @@
-const VERSION = "alpha-0.32-texture-fix";
+const VERSION = "alpha-0.33-slab-support";
 
 const logEl = document.getElementById("log");
 
@@ -44,6 +44,7 @@ const textureData = {};
 const textureCache = new Map();
 let blockMap = {};
 let currentSchemBlocks = [];
+let isAssetsLoaded = false;
 
 const FACE_MAP = [4, 5, 1, 0, 2, 3];
 
@@ -62,26 +63,18 @@ async function extractTextures() {
         const res = await fetch("./images.js");
         const src = await res.text();
         
-        // 1. Extract filename to module ID mapping from "案内モジュール"
-        // These are inside objects like var SF = { "./allium.png": 3190, ... }
-        // We look for patterns like "./name.png": 1234
         const pngToIdRegex = /"\.\/([^"]+?)\.png"\s*:\s*(\d+)/g;
         const pngMap = new Map();
         let m;
         while ((m = pngToIdRegex.exec(src)) !== null) {
             const fullPath = m[1];
-            const filename = fullPath.split('/').pop(); // e.g., "allium" from "./allium.png"
+            const filename = fullPath.split('/').pop();
             const id = parseInt(m[2]);
-            
-            // Map both the filename and the full path to the ID
             pngMap.set(filename, id);
             pngMap.set(fullPath, id);
         }
         log("[TEXTURE] Found", pngMap.size, "filename mappings");
 
-        // 2. Extract module ID to base64 mapping from "データモジュール"
-        // Format: 3190: FF => { FF.exports = "data:image/png;base64,..." }
-        // We need to be careful with the regex to capture the ID and the data string
         const idToDataRegex = /(\d+)\s*:\s*[^=]*?=>\s*\{[^}]*?exports\s*=\s*"(data:image\/png;base64,[^"]+)"/g;
         const idToData = new Map();
         while ((m = idToDataRegex.exec(src)) !== null) {
@@ -89,7 +82,6 @@ async function extractTextures() {
         }
         log("[TEXTURE] Found", idToData.size, "base64 modules");
 
-        // 3. Map them together
         let count = 0;
         pngMap.forEach((id, name) => {
             if (idToData.has(id)) {
@@ -98,7 +90,6 @@ async function extractTextures() {
             }
         });
 
-        // Fallback: If some textures are still missing, try a simpler regex for data modules
         if (count < 100) {
             log("[TEXTURE] Low mapping count, trying fallback data extraction...");
             const fallbackDataRegex = /(\d+)\s*:\s*.*?exports\s*=\s*"(data:image\/png;base64,[^"]+)"/g;
@@ -106,7 +97,6 @@ async function extractTextures() {
                 const id = parseInt(m[1]);
                 if (!idToData.has(id)) {
                     idToData.set(id, m[2]);
-                    // Check if this new ID helps any existing mappings
                     pngMap.forEach((mappedId, name) => {
                         if (mappedId === id && !textureData[name]) {
                             textureData[name] = m[2];
@@ -135,14 +125,20 @@ async function loadBlockData() {
     } catch (e) { log("[BLOCK DATA ERROR]", e.message); }
 }
 
+async function initAssets() {
+    if (isAssetsLoaded) return;
+    log("[INIT] Loading assets...");
+    await extractTextures();
+    await loadBlockData();
+    isAssetsLoaded = true;
+    log("[INIT] Assets ready");
+}
+
 async function getRotatedTexture(name, deg) {
     const key = `${name}_rot_${deg}`;
     if (textureCache.has(key)) return textureCache.get(key);
     const src = textureData[name];
-    if (!src) {
-        // log("[TEXTURE MISSING]", name);
-        return null;
-    }
+    if (!src) return null;
     return new Promise(resolve => {
         const img = new Image();
         img.src = src;
@@ -243,16 +239,26 @@ async function parseSchem(file) {
     return schem;
 }
 
-function createFaceMesh(faceIndex, material) {
+function createFaceMesh(faceIndex, material, scaling, offset) {
     const plane = BABYLON.MeshBuilder.CreatePlane(`face_${faceIndex}`, { size: 1 }, scene);
     plane.material = material;
+    
+    // Apply scaling to the plane vertices
+    const positions = plane.getVerticesData(BABYLON.VertexBuffer.PositionKind);
+    for (let i = 0; i < positions.length; i += 3) {
+        positions[i] *= scaling.x;
+        positions[i+1] *= scaling.y;
+        positions[i+2] *= scaling.z;
+    }
+    plane.setVerticesData(BABYLON.VertexBuffer.PositionKind, positions);
+
     switch(faceIndex) {
-        case 0: plane.rotation.y = 0; plane.position.z = -0.5; break;
-        case 1: plane.rotation.y = Math.PI; plane.position.z = 0.5; break;
-        case 2: plane.rotation.y = -Math.PI / 2; plane.position.x = 0.5; break;
-        case 3: plane.rotation.y = Math.PI / 2; plane.position.x = -0.5; break;
-        case 4: plane.rotation.x = Math.PI / 2; plane.position.y = 0.5; break;
-        case 5: plane.rotation.x = -Math.PI / 2; plane.position.y = -0.5; break;
+        case 0: plane.rotation.y = 0; plane.position.z = -0.5 * scaling.z + offset.z; plane.position.x = offset.x; plane.position.y = offset.y; break;
+        case 1: plane.rotation.y = Math.PI; plane.position.z = 0.5 * scaling.z + offset.z; plane.position.x = offset.x; plane.position.y = offset.y; break;
+        case 2: plane.rotation.y = -Math.PI / 2; plane.position.x = 0.5 * scaling.x + offset.x; plane.position.z = offset.z; plane.position.y = offset.y; break;
+        case 3: plane.rotation.y = Math.PI / 2; plane.position.x = -0.5 * scaling.x + offset.x; plane.position.z = offset.z; plane.position.y = offset.y; break;
+        case 4: plane.rotation.x = Math.PI / 2; plane.position.y = 0.5 * scaling.y + offset.y; plane.position.x = offset.x; plane.position.z = offset.z; break;
+        case 5: plane.rotation.x = -Math.PI / 2; plane.position.y = -0.5 * scaling.y + offset.y; plane.position.x = offset.x; plane.position.z = offset.z; break;
     }
     plane.bakeCurrentTransformIntoVertices();
     return plane;
@@ -262,6 +268,8 @@ async function buildSchem(schem) {
     clearScene();
     log("[BUILD] starting...");
     const blockPositions = new Map();
+    const errorLogs = [];
+
     for (const chunk of schem.chunks) {
         const decoded = decodeBlocks(new Uint8Array(chunk.blocks));
         for (let i = 0; i < decoded.length; i++) {
@@ -280,14 +288,45 @@ async function buildSchem(schem) {
     let totalPlaced = 0;
     for (const [blockId, positions] of blockPositions) {
         const block = blockMap[blockId];
-        if (!block) continue;
+        if (!block) {
+            errorLogs.push({ id: blockId, reason: "Missing in blockData.json" });
+            continue;
+        }
         
         const textureInfo = block.textureInfo;
-        if (!textureInfo) continue;
+        if (!textureInfo) {
+            errorLogs.push({ id: blockId, reason: "No textureInfo" });
+            continue;
+        }
+
+        // Slab Logic
+        let scaling = new BABYLON.Vector3(1, 1, 1);
+        let offset = new BABYLON.Vector3(0, 0, 0);
+        
+        if (block.model === "Slab") {
+            const hp = block.halfblockPlacement ?? 0;
+            if (hp === 0) { // Bottom
+                scaling.y = 0.5;
+                offset.y = -0.25;
+            } else if (hp === 1) { // Top
+                scaling.y = 0.5;
+                offset.y = 0.25;
+            } else if (hp === 2) { // Side
+                const rot = block.rot ?? 1;
+                if (rot === 1) { // Z-
+                    scaling.z = 0.5; offset.z = -0.25;
+                } else if (rot === 2) { // X-
+                    scaling.x = 0.5; offset.x = -0.25;
+                } else if (rot === 3) { // Z+
+                    scaling.z = 0.5; offset.z = 0.25;
+                } else if (rot === 4) { // X+
+                    scaling.x = 0.5; offset.x = 0.25;
+                }
+            }
+        }
 
         for (let face = 0; face < 6; face++) {
             const bloxdFace = FACE_MAP[face];
-            // New logic: textureInfo is now a 6-element array matching FACE_MAP order
             const texName = Array.isArray(textureInfo) ? textureInfo[bloxdFace] : textureInfo;
             if (!texName) continue;
 
@@ -295,7 +334,6 @@ async function buildSchem(schem) {
             const mat = new BABYLON.StandardMaterial(`mat_${blockId}_f${face}`, scene);
             const tex = await getRotatedTexture(texName, rot);
             if (!tex) {
-                // Fallback color if texture missing
                 mat.diffuseColor = new BABYLON.Color3(0.8, 0.8, 0.8);
             } else {
                 mat.diffuseTexture = tex;
@@ -306,7 +344,7 @@ async function buildSchem(schem) {
             mat.backFaceCulling = true;
             mat.alphaMode = BABYLON.Engine.ALPHA_COMBINE;
 
-            const faceMesh = createFaceMesh(face, mat);
+            const faceMesh = createFaceMesh(face, mat, scaling, offset);
             const matricesData = new Float32Array(positions.length * 16);
             for (let i = 0; i < positions.length; i++) {
                 const matrix = BABYLON.Matrix.Translation(positions[i].x, positions[i].y, positions[i].z);
@@ -316,6 +354,17 @@ async function buildSchem(schem) {
         }
         totalPlaced += positions.length;
     }
+    
+    if (errorLogs.length > 0) {
+        log("[BUILD ERRORS]", errorLogs.length, "issues found:");
+        const summary = {};
+        errorLogs.forEach(e => {
+            const key = `${e.id}:${e.reason}`;
+            summary[key] = (summary[key] || 0) + 1;
+        });
+        Object.entries(summary).forEach(([k, v]) => log(` - ${k} (count: ${v})`));
+    }
+    
     log("[DONE] total blocks:", totalPlaced);
     
     const bounds = getModelWorldBounds();
@@ -466,8 +515,7 @@ async function instantCapture() {
 document.getElementById("buildBtn").onclick = async () => {
     try {
         log("[START]");
-        await extractTextures();
-        await loadBlockData();
+        await initAssets();
         const file = document.getElementById("schemInput").files[0];
         if (!file) { alert("schemファイルを選択してください"); return; }
         const schem = await parseSchem(file);
@@ -480,4 +528,8 @@ window.instantCapture = instantCapture;
 engine.runRenderLoop(() => { scene.render(); });
 window.addEventListener("resize", () => { engine.resize(); updateOrtho(camera.orthoTop || 10); });
 updateOrtho(10);
+
+// Pre-load assets
+initAssets();
+
 log("[READY]");
