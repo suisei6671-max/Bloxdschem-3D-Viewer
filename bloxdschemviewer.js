@@ -1,4 +1,4 @@
-const VERSION = "alpha-0.36-slab-texture-rotation-fix";
+const VERSION = "alpha-0.37-slab-rotation-motion-fix";
 
 const logEl = document.getElementById("log");
 
@@ -211,7 +211,7 @@ function decodeBlocks(bytes) {
 }
 
 function idxToXYZ(i) {
-    // Matches もどす.html exactly
+    // Matches もどす.html exactly: x is slowest, z is fastest
     return { 
         x: Math.floor(i / 1024), 
         y: Math.floor(i / 32) % 32, 
@@ -317,11 +317,11 @@ async function buildSchem(schem) {
             if (rawId === 0) continue;
             const blockId = rawId - 1;
             const pos = idxToXYZ(i);
-            // Corrected: chunk.x corresponds to pos.x, etc.
+            // Based on もどす.html and user feedback, chunk.z is depth, chunk.x is width
             const worldPos = new BABYLON.Vector3(
-                chunk.x * 32 + pos.x, 
+                chunk.z * 32 + pos.z, 
                 chunk.y * 32 + pos.y, 
-                chunk.z * 32 + pos.z
+                chunk.x * 32 + pos.x
             );
             currentSchemBlocks.push({ id: blockId, x: worldPos.x, y: worldPos.y, z: worldPos.z });
             if (!blockPositions.has(blockId)) blockPositions.set(blockId, []);
@@ -344,10 +344,11 @@ async function buildSchem(schem) {
             continue;
         }
 
-        // Slab logic with rotation and texture mapping
+        // Slab logic with physical rotation motion
         let currentScaling = new BABYLON.Vector3(1, 1, 1);
         let currentOffset = new BABYLON.Vector3(0, 0, 0);
-        let faceToTexMap = [...FACE_MAP]; // Default mapping
+        let modelRotation = new BABYLON.Vector3(0, 0, 0);
+        let faceToTexMap = [...FACE_MAP];
 
         if (block.model === "Slab") {
             const hp = block.halfblockPlacement ?? 0;
@@ -355,22 +356,26 @@ async function buildSchem(schem) {
                 currentScaling.y = 0.5; currentOffset.y = -0.25;
             } else if (hp === 1) { // Top
                 currentScaling.y = 0.5; currentOffset.y = 0.25;
-            } else if (hp === 2) { // Side
+            } else if (hp === 2) { // Side (Rotation Motion)
                 const rot = block.rot ?? 1;
-                // For side slabs, the "Top/Bottom" textures (index 2,3) move to the sides
-                if (rot === 1) { // Z-
-                    currentScaling.z = 0.5; currentOffset.z = -0.25;
-                    faceToTexMap = [2, 3, 1, 0, 4, 5]; // Remap faces
-                } else if (rot === 2) { // X-
-                    currentScaling.x = 0.5; currentOffset.x = -0.25;
-                    faceToTexMap = [1, 0, 2, 3, 4, 5]; // Remap faces
-                } else if (rot === 3) { // Z+
-                    currentScaling.z = 0.5; currentOffset.z = 0.25;
-                    faceToTexMap = [3, 2, 1, 0, 4, 5]; // Remap faces
-                } else if (rot === 4) { // X+
-                    currentScaling.x = 0.5; currentOffset.x = 0.25;
-                    faceToTexMap = [0, 1, 2, 3, 4, 5]; // Remap faces
+                // Start with a "Top Slab" and rotate it
+                currentScaling.y = 0.5;
+                if (rot === 1) { // Z- (Rotate around X axis)
+                    modelRotation.x = Math.PI / 2;
+                    currentOffset.z = -0.25;
+                } else if (rot === 2) { // X- (Rotate around Z axis)
+                    modelRotation.z = Math.PI / 2;
+                    currentOffset.x = -0.25;
+                } else if (rot === 3) { // Z+ (Rotate around X axis)
+                    modelRotation.x = -Math.PI / 2;
+                    currentOffset.z = 0.25;
+                } else if (rot === 4) { // X+ (Rotate around Z axis)
+                    modelRotation.z = -Math.PI / 2;
+                    currentOffset.x = 0.25;
                 }
+                // Remap textures to follow the rotation
+                if (rot === 1 || rot === 3) faceToTexMap = [2, 3, 1, 0, 4, 5];
+                if (rot === 2 || rot === 4) faceToTexMap = [1, 0, 2, 3, 4, 5];
             }
         }
 
@@ -395,6 +400,13 @@ async function buildSchem(schem) {
             mat.alphaMode = BABYLON.Engine.ALPHA_COMBINE;
 
             const faceMesh = createFaceMesh(face, mat, currentScaling, currentOffset);
+            
+            // Apply model-level rotation if any
+            if (modelRotation.length() > 0) {
+                const rotationMatrix = BABYLON.Matrix.RotationYawPitchRoll(modelRotation.y, modelRotation.x, modelRotation.z);
+                faceMesh.bakeTransformIntoVertices(rotationMatrix);
+            }
+
             const matricesData = new Float32Array(positions.length * 16);
             for (let i = 0; i < positions.length; i++) {
                 const matrix = BABYLON.Matrix.Translation(positions[i].x, positions[i].y, positions[i].z);
