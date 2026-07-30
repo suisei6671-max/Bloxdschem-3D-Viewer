@@ -1,4 +1,4 @@
-const VERSION = "alpha-0.34-coord-zoom-fix";
+const VERSION = "alpha-0.35-coord-slab-overhaul";
 
 const logEl = document.getElementById("log");
 
@@ -211,7 +211,13 @@ function decodeBlocks(bytes) {
 }
 
 function idxToXYZ(i) {
-    return { x: i % 32, y: Math.floor(i / 32) % 32, z: Math.floor(i / 1024) };
+    // Re-ordered to match the observed coordinate distribution:
+    // Z is the fastest changing axis, X is the slowest.
+    return {
+        z: i % 32,
+        y: Math.floor(i / 32) % 32,
+        x: Math.floor(i / 1024)
+    };
 }
 
 async function parseSchem(file) {
@@ -257,25 +263,43 @@ async function parseSchem(file) {
 }
 
 function createFaceMesh(faceIndex, material, scaling, offset) {
-    const plane = BABYLON.MeshBuilder.CreatePlane(`face_${faceIndex}`, { size: 1 }, scene);
-    plane.material = material;
-    
-    // Apply scaling to the plane vertices
-    const positions = plane.getVerticesData(BABYLON.VertexBuffer.PositionKind);
-    for (let i = 0; i < positions.length; i += 3) {
-        positions[i] *= scaling.x;
-        positions[i+1] *= scaling.y;
-        positions[i+2] *= scaling.z;
+    // Create a plane that will be one side of the (possibly squashed) box
+    // The size of the plane depends on which face it is
+    let width = 1, height = 1;
+    switch(faceIndex) {
+        case 0: case 1: width = scaling.x; height = scaling.y; break; // Front/Back
+        case 2: case 3: width = scaling.z; height = scaling.y; break; // Right/Left
+        case 4: case 5: width = scaling.x; height = scaling.z; break; // Top/Bottom
     }
-    plane.setVerticesData(BABYLON.VertexBuffer.PositionKind, positions);
+
+    const plane = BABYLON.MeshBuilder.CreatePlane(`face_${faceIndex}`, { width, height }, scene);
+    plane.material = material;
 
     switch(faceIndex) {
-        case 0: plane.rotation.y = 0; plane.position.z = -0.5 * scaling.z + offset.z; plane.position.x = offset.x; plane.position.y = offset.y; break;
-        case 1: plane.rotation.y = Math.PI; plane.position.z = 0.5 * scaling.z + offset.z; plane.position.x = offset.x; plane.position.y = offset.y; break;
-        case 2: plane.rotation.y = -Math.PI / 2; plane.position.x = 0.5 * scaling.x + offset.x; plane.position.z = offset.z; plane.position.y = offset.y; break;
-        case 3: plane.rotation.y = Math.PI / 2; plane.position.x = -0.5 * scaling.x + offset.x; plane.position.z = offset.z; plane.position.y = offset.y; break;
-        case 4: plane.rotation.x = Math.PI / 2; plane.position.y = 0.5 * scaling.y + offset.y; plane.position.x = offset.x; plane.position.z = offset.z; break;
-        case 5: plane.rotation.x = -Math.PI / 2; plane.position.y = -0.5 * scaling.y + offset.y; plane.position.x = offset.x; plane.position.z = offset.z; break;
+        case 0: // Front (Z-)
+            plane.rotation.y = 0; 
+            plane.position.set(offset.x, offset.y, -0.5 * scaling.z + offset.z); 
+            break;
+        case 1: // Back (Z+)
+            plane.rotation.y = Math.PI; 
+            plane.position.set(offset.x, offset.y, 0.5 * scaling.z + offset.z); 
+            break;
+        case 2: // Right (X+)
+            plane.rotation.y = -Math.PI / 2; 
+            plane.position.set(0.5 * scaling.x + offset.x, offset.y, offset.z); 
+            break;
+        case 3: // Left (X-)
+            plane.rotation.y = Math.PI / 2; 
+            plane.position.set(-0.5 * scaling.x + offset.x, offset.y, offset.z); 
+            break;
+        case 4: // Top (Y+)
+            plane.rotation.x = Math.PI / 2; 
+            plane.position.set(offset.x, 0.5 * scaling.y + offset.y, offset.z); 
+            break;
+        case 5: // Bottom (Y-)
+            plane.rotation.x = -Math.PI / 2; 
+            plane.position.set(offset.x, -0.5 * scaling.y + offset.y, offset.z); 
+            break;
     }
     plane.bakeCurrentTransformIntoVertices();
     return plane;
