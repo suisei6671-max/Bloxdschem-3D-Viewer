@@ -1,4 +1,4 @@
-const VERSION = "alpha-0.33-slab-support";
+const VERSION = "alpha-0.33.1-slab-support";
 
 const logEl = document.getElementById("log");
 
@@ -268,7 +268,7 @@ async function buildSchem(schem) {
     clearScene();
     log("[BUILD] starting...");
     const blockPositions = new Map();
-    const errorLogs = [];
+    const blockStats = new Map(); // Track status of every block ID
 
     for (const chunk of schem.chunks) {
         const decoded = decodeBlocks(new Uint8Array(chunk.blocks));
@@ -289,13 +289,13 @@ async function buildSchem(schem) {
     for (const [blockId, positions] of blockPositions) {
         const block = blockMap[blockId];
         if (!block) {
-            errorLogs.push({ id: blockId, reason: "Missing in blockData.json" });
+            blockStats.set(blockId, { status: "FAILED", reason: "Missing in blockData.json", count: positions.length });
             continue;
         }
         
         const textureInfo = block.textureInfo;
         if (!textureInfo) {
-            errorLogs.push({ id: blockId, reason: "No textureInfo" });
+            blockStats.set(blockId, { status: "FAILED", reason: "No textureInfo", count: positions.length, name: block.name });
             continue;
         }
 
@@ -325,6 +325,7 @@ async function buildSchem(schem) {
             }
         }
 
+        let facesCreated = 0;
         for (let face = 0; face < 6; face++) {
             const bloxdFace = FACE_MAP[face];
             const texName = Array.isArray(textureInfo) ? textureInfo[bloxdFace] : textureInfo;
@@ -351,21 +352,30 @@ async function buildSchem(schem) {
                 matrix.copyToArray(matricesData, i * 16);
             }
             faceMesh.thinInstanceSetBuffer("matrix", matricesData, 16);
+            facesCreated++;
         }
-        totalPlaced += positions.length;
+        
+        if (facesCreated > 0) {
+            blockStats.set(blockId, { status: "SUCCESS", count: positions.length, name: block.name, model: block.model });
+            totalPlaced += positions.length;
+        } else {
+            blockStats.set(blockId, { status: "FAILED", reason: "No faces created (empty textureInfo?)", count: positions.length, name: block.name });
+        }
     }
     
-    if (errorLogs.length > 0) {
-        log("[BUILD ERRORS]", errorLogs.length, "issues found:");
-        const summary = {};
-        errorLogs.forEach(e => {
-            const key = `${e.id}:${e.reason}`;
-            summary[key] = (summary[key] || 0) + 1;
-        });
-        Object.entries(summary).forEach(([k, v]) => log(` - ${k} (count: ${v})`));
-    }
+    // Detailed summary log
+    log("[BUILD SUMMARY]");
+    blockStats.forEach((stat, id) => {
+        const nameStr = stat.name ? ` (${stat.name})` : "";
+        const modelStr = stat.model ? ` [Model: ${stat.model}]` : "";
+        if (stat.status === "SUCCESS") {
+            log(` ✅ ID ${id}${nameStr}${modelStr}: ${stat.count} blocks placed`);
+        } else {
+            log(` ❌ ID ${id}${nameStr}: FAILED - ${stat.reason} (${stat.count} blocks skipped)`);
+        }
+    });
     
-    log("[DONE] total blocks:", totalPlaced);
+    log("[DONE] total blocks placed:", totalPlaced);
     
     const bounds = getModelWorldBounds();
     if (bounds) {
