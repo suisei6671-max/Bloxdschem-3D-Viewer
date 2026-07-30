@@ -1,4 +1,4 @@
-const VERSION = "alpha-0.33.1-slab-support";
+const VERSION = "alpha-0.33-slab-support";
 
 const logEl = document.getElementById("log");
 
@@ -184,11 +184,16 @@ function readULEB(bytes, state) {
 function decodeBlocks(bytes) {
     const arr = new Uint16Array(32 * 32 * 32);
     const state = { offset: 0 };
+    let currentIndex = 0;
     while (state.offset < bytes.length) {
-        const index = readULEB(bytes, state);
+        const skip = readULEB(bytes, state);
+        currentIndex += skip;
         if (state.offset >= bytes.length) break;
         const id = readULEB(bytes, state);
-        if (index < arr.length) arr[index] = id;
+        if (currentIndex < arr.length) {
+            arr[currentIndex] = id;
+        }
+        currentIndex += 1; // Move to next position after placing a block
     }
     return arr;
 }
