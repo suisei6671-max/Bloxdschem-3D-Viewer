@@ -62,53 +62,39 @@ async function extractTextures() {
         const res = await fetch("./images.js");
         const src = await res.text();
         
-        // Improved regex to find all base64 images in the webpack-style bundle
-        // Matches: "data:image/png;base64,..."
-        const base64Regex = /data:image\/png;base64,[A-Za-z0-9+/=]+/g;
-        const allBase64 = src.match(base64Regex) || [];
-        log("[TEXTURE] Found", allBase64.length, "base64 strings");
-
-        // Improved regex to find filename to module ID mapping
-        // Matches: "./filename.png":12345
+        // 1. Extract filename to module ID mapping
+        // Format: "./filename.png":12345
         const pngToIdRegex = /"\.\/([^"]+?)\.png":(\d+)/g;
         const pngMap = new Map();
         let m;
         while ((m = pngToIdRegex.exec(src)) !== null) {
-            pngMap.set(m[1], parseInt(m[2]));
+            const fullPath = m[1];
+            const filename = fullPath.split('/').pop(); // Get just the name without path
+            const id = parseInt(m[2]);
+            pngMap.set(filename, id);
+            // Also keep the full path mapping just in case
+            pngMap.set(fullPath, id);
         }
         log("[TEXTURE] Found", pngMap.size, "filename mappings");
 
-        // Improved regex to find module ID to base64 mapping
-        // Matches: 12345:(...)exports="data:image..."
-        const idToDataRegex = /(\d+):\(.*?exports\s*=\s*"(data:image\/png;base64,[^"]+)"/g;
+        // 2. Extract module ID to base64 mapping
+        // Format: 12345:FF=>{FF.exports="data:image/png;base64,..."}
+        // Using a more flexible regex to handle variations in the arrow function
+        const idToDataRegex = /(\d+):[^{]*?\{[^{]*?exports\s*=\s*"(data:image\/png;base64,[^"]+)"/g;
         let count = 0;
+        const idToData = new Map();
         while ((m = idToDataRegex.exec(src)) !== null) {
-            const id = parseInt(m[1]);
-            const data = m[2];
-            // Find which filename(s) map to this ID
-            pngMap.forEach((mappedId, name) => {
-                if (mappedId === id) {
-                    textureData[name] = data;
-                    count++;
-                }
-            });
+            idToData.set(parseInt(m[1]), m[2]);
         }
-        
-        // Fallback: if the above failed, try a more aggressive approach
-        if (count === 0) {
-            log("[TEXTURE] Fallback extraction...");
-            const fallbackRegex = /(\d+):.*?exports\s*=\s*"(data:image\/png;base64,[^"]+)"/g;
-            while ((m = fallbackRegex.exec(src)) !== null) {
-                const id = parseInt(m[1]);
-                const data = m[2];
-                pngMap.forEach((mappedId, name) => {
-                    if (mappedId === id) {
-                        textureData[name] = data;
-                        count++;
-                    }
-                });
+        log("[TEXTURE] Found", idToData.size, "base64 modules");
+
+        // 3. Map them together
+        pngMap.forEach((id, name) => {
+            if (idToData.has(id)) {
+                textureData[name] = idToData.get(id);
+                count++;
             }
-        }
+        });
 
         log("[TEXTURE] Successfully mapped", count, "textures");
     } catch (e) { log("[TEXTURE ERROR]", e.message); }
