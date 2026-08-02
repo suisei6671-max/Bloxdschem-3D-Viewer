@@ -322,42 +322,78 @@ async function buildSchem(schem) {
         let faceToTexMap = [...FACE_MAP];
 
         if (block.model === "Slab") {
-            // halfblockPlacement -> 0: top, 1: bottom, 2: side
-            const hp = block.halfblockPlacement ?? 1;
-            const rot = block.rot ?? 1;
+    const hp = block.halfblockPlacement ?? 1;
+    const rot = block.rot ?? 1;
 
-            if (hp === 0) { 
-                // Top (上付け)
-                currentScaling.y = 0.5; 
-                currentOffset.y = 0.25;
-            } else if (hp === 1) { 
-                // Bottom (下付け)
-                currentScaling.y = 0.5; 
-                currentOffset.y = -0.25;
-            } else if (hp === 2) { 
-                // Side (壁付け)
-                currentScaling.y = 0.5;
-                
-                // rot1~4 に合わせて回転と壁側への引き込み(0.25)を行う
-                if (rot === 1) { // Z- 方向
-                    modelRotation.x = Math.PI / 2;
-                    currentOffset.z = -0.25;
-                    faceToTexMap = [2, 3, 1, 0, 4, 5];
-                } else if (rot === 2) { // X- 方向
-                    modelRotation.z = Math.PI / 2;
-                    currentOffset.x = -0.25;
-                    faceToTexMap = [1, 0, 2, 3, 4, 5];
-                } else if (rot === 3) { // Z+ 方向
-                    modelRotation.x = -Math.PI / 2;
-                    currentOffset.z = 0.25;
-                    faceToTexMap = [3, 2, 0, 1, 4, 5];
-                } else if (rot === 4) { // X+ 方向
-                    modelRotation.z = -Math.PI / 2;
-                    currentOffset.x = 0.25;
-                    faceToTexMap = [0, 1, 3, 2, 4, 5];
-                }
-            }
+    // 1. スケーリング設定
+    currentScaling.y = 0.5;
+
+    // 2. 面ごとの個別座標設定（中間変数を使わずダイレクトに計算）
+    for (let face = 0; face < 6; face++) {
+        let texIndex = FACE_MAP[face];
+        
+        // 独自メッシュ生成
+        const plane = BABYLON.MeshBuilder.CreatePlane(`face_${face}`, {
+            width: (face === 2 || face === 3) ? currentScaling.z : currentScaling.x,
+            height: (face === 4 || face === 5) ? currentScaling.z : currentScaling.y
+        }, scene);
+
+        // 基本位置（通常のBox/Slab面配置）
+        let px = 0, py = 0, pz = 0;
+        let rx = 0, ry = 0, rz = 0;
+
+        // 面の向きに応じた基本位置・回転
+        switch(face) {
+            case 0: pz = -0.25; break;
+            case 1: pz = 0.25; ry = Math.PI; break;
+            case 2: px = 0.5; ry = -Math.PI / 2; break;
+            case 3: px = -0.5; ry = Math.PI / 2; break;
+            case 4: py = 0.25; rx = Math.PI / 2; break;
+            case 5: py = -0.25; rx = -Math.PI / 2; break;
         }
+
+        // halfblockPlacement による直接オフセット＆回転ベイク
+        if (hp === 0) {
+            // top
+            py += 0.25;
+        } else if (hp === 1) {
+            // bottom
+            py -= 0.25;
+        } else if (hp === 2) {
+            // side: rot1~4 に応じたトランスフォームの直接焼き込み
+            const rotMatrix = BABYLON.Matrix.Identity();
+            
+            if (rot === 1) {
+                rotMatrix.copyFrom(BABYLON.Matrix.RotationX(Math.PI / 2));
+                pz -= 0.25;
+                texIndex = [2, 3, 1, 0, 4, 5][face];
+            } else if (rot === 2) {
+                rotMatrix.copyFrom(BABYLON.Matrix.RotationZ(Math.PI / 2));
+                px -= 0.25;
+                texIndex = [1, 0, 2, 3, 4, 5][face];
+            } else if (rot === 3) {
+                rotMatrix.copyFrom(BABYLON.Matrix.RotationX(-Math.PI / 2));
+                pz += 0.25;
+                texIndex = [3, 2, 0, 1, 4, 5][face];
+            } else if (rot === 4) {
+                rotMatrix.copyFrom(BABYLON.Matrix.RotationZ(-Math.PI / 2));
+                px += 0.25;
+                texIndex = [0, 1, 3, 2, 4, 5][face];
+            }
+
+            plane.position.set(px, py, pz);
+            plane.rotation.set(rx, ry, rz);
+            plane.bakeCurrentTransformIntoVertices();
+            plane.bakeTransformIntoVertices(rotMatrix);
+        } else {
+            plane.position.set(px, py, pz);
+            plane.rotation.set(rx, ry, rz);
+            plane.bakeCurrentTransformIntoVertices();
+        }
+
+        // テクスチャ適用 & ThinInstance バッファ設定へ続く...
+    }
+}
 
         let facesCreated = 0;
         for (let face = 0; face < 6; face++) {
