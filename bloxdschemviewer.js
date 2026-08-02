@@ -1,4 +1,4 @@
-const VERSION = "alpha-0.39-official-slab-logic-sync";
+const VERSION = "alpha-0.40-slab-placement-fix";
 
 const logEl = document.getElementById("log");
 
@@ -265,6 +265,10 @@ async function buildSchem(schem) {
         const rot = block.rot ?? 1;
         const isSlab = block.model === "Slab";
 
+        if (isSlab && positions.length > 0) {
+            log(`[DEBUG] Slab ID ${blockId}: hp=${hp}, rot=${rot}`);
+        }
+
         let facesCreated = 0;
         for (let face = 0; face < 6; face++) {
             let scaling = new BABYLON.Vector3(1, 1, 1);
@@ -272,17 +276,32 @@ async function buildSchem(schem) {
             let modelRot = new BABYLON.Vector3(0, 0, 0);
 
             if (isSlab) {
+                // All slabs start as a Y-squashed box
                 scaling.y = 0.5;
-                if (hp === 0) { // Top (Bloxd 0)
+                
+                if (hp === 0) { // top
                     offset.y = 0.25;
-                } else if (hp === 1) { // Bottom (Bloxd 1)
+                } else if (hp === 1) { // bottom
                     offset.y = -0.25;
-                } else if (hp === 2) { // Side (Bloxd 2)
+                } else if (hp === 2) { // side
+                    // Official logic: rotation.x = PI/2
                     modelRot.x = Math.PI / 2;
-                    if (rot === 1) { offset.z = -0.25; modelRot.y = 0; }
-                    else if (rot === 2) { offset.x = -0.25; modelRot.y = -Math.PI / 2; }
-                    else if (rot === 3) { offset.z = 0.25; modelRot.y = Math.PI; }
-                    else if (rot === 4) { offset.x = 0.25; modelRot.y = Math.PI / 2; }
+                    
+                    // Then apply rotation based on 'rot' and set offset
+                    // rot 1: Z-, 2: X-, 3: Z+, 4: X+
+                    if (rot === 1) {
+                        modelRot.y = 0;
+                        offset.z = -0.25;
+                    } else if (rot === 2) {
+                        modelRot.y = -Math.PI / 2;
+                        offset.x = -0.25;
+                    } else if (rot === 3) {
+                        modelRot.y = Math.PI;
+                        offset.z = 0.25;
+                    } else if (rot === 4) {
+                        modelRot.y = Math.PI / 2;
+                        offset.x = 0.25;
+                    }
                 }
             }
 
