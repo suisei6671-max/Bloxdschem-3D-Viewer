@@ -347,7 +347,7 @@ function clearScene() {
 engine.runRenderLoop(() => scene.render());
 window.addEventListener("resize", () => { engine.resize(); updateOrtho(camera.orthoTop); });
 
-document.getElementById("fileInput").addEventListener("change", async (e) => {
+document.getElementById("schemInput").addEventListener("change", async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     await initAssets();
