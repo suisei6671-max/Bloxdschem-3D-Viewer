@@ -1,4 +1,4 @@
-const VERSION = "alpha-0.37-slab-rotation-motion-fix";
+const VERSION = "alpha-0.38-slab-placement-fix";
 
 const logEl = document.getElementById("log");
 
@@ -18,7 +18,7 @@ import { Buffer } from "https://esm.sh/buffer@6.0.3";
 
 window.Buffer = Buffer;
 
-// ===== Schema 定義（もどす.htmlより） =====
+// ===== Schema 定義 =====
 const schema = avsc.Type.forSchema({
     type: "record",
     name: "Schematic",
@@ -48,7 +48,7 @@ const schema = avsc.Type.forSchema({
     ]
 });
 
-// ===== 修正後の decodeBlocks（もどす.htmlより） =====
+// ===== decodeBlocks =====
 function decodeBlocks(chunk) {
     let i = 0;
     const data = chunk.blocks;
@@ -74,7 +74,7 @@ function decodeBlocks(chunk) {
     return blocks;
 }
 
-// ===== 修正後の parseSchem (もどす.htmlの parse + convertTo3D 相当) =====
+// ===== parseSchem =====
 async function parseSchem(file) {
     const arrayBuffer = await file.arrayBuffer();
     const full = new Uint8Array(arrayBuffer);
@@ -132,14 +132,13 @@ const camera = new BABYLON.ArcRotateCamera(
     scene
 );
 camera.mode = BABYLON.Camera.ORTHOGRAPHIC_CAMERA;
-camera.attachControl(canvas, true, false); // Disable default zoom to handle it manually
+camera.attachControl(canvas, true, false);
 camera.minZ = -1000;
 camera.maxZ = 1000;
 
 // Custom Zoom for Orthographic Camera
 canvas.addEventListener("wheel", (e) => {
     e.preventDefault();
-    const zoomSpeed = 0.1;
     const delta = e.deltaY > 0 ? 1.1 : 0.9;
     const currentTop = camera.orthoTop || 10;
     const newTop = Math.max(0.1, Math.min(500, currentTop * delta));
@@ -283,18 +282,17 @@ function clearScene() {
     currentSchemBlocks = [];
 }
 
-// ===== 修正後の buildSchem =====
+// ===== 修正版 buildSchem =====
 async function buildSchem(schem) {
     clearScene();
     log("[BUILD] starting...");
     const blockPositions = new Map();
-    const blockStats = new Map(); // Track status of every block ID
+    const blockStats = new Map();
 
-    // パース済みの schem.blocks ( [{x, y, z, id}] ) から読み出す
     for (const b of schem.blocks) {
         const rawId = b.id;
         if (rawId === 0) continue;
-        const blockId = rawId - 1; // 元コードと同じく 1 引く仕様を維持
+        const blockId = rawId - 1;
         
         const worldPos = new BABYLON.Vector3(b.x, b.y, b.z);
         currentSchemBlocks.push({ id: blockId, x: worldPos.x, y: worldPos.y, z: worldPos.z });
@@ -317,38 +315,47 @@ async function buildSchem(schem) {
             continue;
         }
 
-        // Slab logic with physical rotation motion
+        // Slab 描画ロジックの修正
         let currentScaling = new BABYLON.Vector3(1, 1, 1);
         let currentOffset = new BABYLON.Vector3(0, 0, 0);
         let modelRotation = new BABYLON.Vector3(0, 0, 0);
         let faceToTexMap = [...FACE_MAP];
 
         if (block.model === "Slab") {
-            const hp = block.halfblockPlacement ?? 0;
-            if (hp === 0) { // Bottom
-                currentScaling.y = 0.5; currentOffset.y = -0.25;
-            } else if (hp === 1) { // Top
-                currentScaling.y = 0.5; currentOffset.y = 0.25;
-            } else if (hp === 2) { // Side (Rotation Motion)
-                const rot = block.rot ?? 1;
-                // Start with a "Top Slab" and rotate it
+            // halfblockPlacement -> 0: top, 1: bottom, 2: side
+            const hp = block.halfblockPlacement ?? 1;
+            const rot = block.rot ?? 1;
+
+            if (hp === 0) { 
+                // Top (上付け)
+                currentScaling.y = 0.5; 
+                currentOffset.y = 0.25;
+            } else if (hp === 1) { 
+                // Bottom (下付け)
+                currentScaling.y = 0.5; 
+                currentOffset.y = -0.25;
+            } else if (hp === 2) { 
+                // Side (壁付け)
                 currentScaling.y = 0.5;
-                if (rot === 1) { // Z- (Rotate around X axis)
+                
+                // rot1~4 に合わせて回転と壁側への引き込み(0.25)を行う
+                if (rot === 1) { // Z- 方向
                     modelRotation.x = Math.PI / 2;
                     currentOffset.z = -0.25;
-                } else if (rot === 2) { // X- (Rotate around Z axis)
+                    faceToTexMap = [2, 3, 1, 0, 4, 5];
+                } else if (rot === 2) { // X- 方向
                     modelRotation.z = Math.PI / 2;
                     currentOffset.x = -0.25;
-                } else if (rot === 3) { // Z+ (Rotate around X axis)
+                    faceToTexMap = [1, 0, 2, 3, 4, 5];
+                } else if (rot === 3) { // Z+ 方向
                     modelRotation.x = -Math.PI / 2;
                     currentOffset.z = 0.25;
-                } else if (rot === 4) { // X+ (Rotate around Z axis)
+                    faceToTexMap = [3, 2, 0, 1, 4, 5];
+                } else if (rot === 4) { // X+ 方向
                     modelRotation.z = -Math.PI / 2;
                     currentOffset.x = 0.25;
+                    faceToTexMap = [0, 1, 3, 2, 4, 5];
                 }
-                // Remap textures to follow the rotation
-                if (rot === 1 || rot === 3) faceToTexMap = [2, 3, 1, 0, 4, 5];
-                if (rot === 2 || rot === 4) faceToTexMap = [1, 0, 2, 3, 4, 5];
             }
         }
 
@@ -358,9 +365,9 @@ async function buildSchem(schem) {
             const texName = Array.isArray(textureInfo) ? textureInfo[texIndex] : textureInfo;
             if (!texName) continue;
 
-            const rot = FACE_ROTATION[face] ?? 0;
+            const rotDeg = FACE_ROTATION[face] ?? 0;
             const mat = new BABYLON.StandardMaterial(`mat_${blockId}_f${face}`, scene);
-            const tex = await getRotatedTexture(texName, rot);
+            const tex = await getRotatedTexture(texName, rotDeg);
             if (!tex) {
                 mat.diffuseColor = new BABYLON.Color3(0.8, 0.8, 0.8);
             } else {
@@ -374,7 +381,7 @@ async function buildSchem(schem) {
 
             const faceMesh = createFaceMesh(face, mat, currentScaling, currentOffset);
             
-            // Apply model-level rotation if any
+            // モデル全体の回転を行列でベイク
             if (modelRotation.length() > 0) {
                 const rotationMatrix = BABYLON.Matrix.RotationYawPitchRoll(modelRotation.y, modelRotation.x, modelRotation.z);
                 faceMesh.bakeTransformIntoVertices(rotationMatrix);
@@ -397,7 +404,6 @@ async function buildSchem(schem) {
         }
     }
     
-    // Detailed summary log
     log("[BUILD SUMMARY]");
     blockStats.forEach((stat, id) => {
         const nameStr = stat.name ? ` (${stat.name})` : "";
