@@ -12,6 +12,107 @@ function log(...a) {
 
 log("[BOOT]", VERSION);
 
+// ===== avsc と Buffer の読み込み・設定 =====
+import avsc from "https://esm.sh/avsc@5.7.4";
+import { Buffer } from "https://esm.sh/buffer@6.0.3";
+
+window.Buffer = Buffer;
+
+// ===== Schema 定義（もどす.htmlより） =====
+const schema = avsc.Type.forSchema({
+    type: "record",
+    name: "Schematic",
+    fields: [
+        { name: "name", type: "string" },
+        { name: "x", type: "int" },
+        { name: "y", type: "int" },
+        { name: "z", type: "int" },
+        { name: "sizeX", type: "int" },
+        { name: "sizeY", type: "int" },
+        { name: "sizeZ", type: "int" },
+        {
+            name: "chunks",
+            type: {
+                type: "array",
+                items: {
+                    type: "record",
+                    fields: [
+                        { name: "x", type: "int" },
+                        { name: "y", type: "int" },
+                        { name: "z", type: "int" },
+                        { name: "blocks", type: "bytes" }
+                    ]
+                }
+            }
+        }
+    ]
+});
+
+// ===== 修正後の decodeBlocks（もどす.htmlより） =====
+function decodeBlocks(chunk) {
+    let i = 0;
+    const data = chunk.blocks;
+    const blocks = [];
+
+    function leb() {
+        let shift = 0, value = 0;
+        while (true) {
+            const byte = data[i++];
+            value |= (byte & 127) << shift;
+            shift += 7;
+            if (!(byte & 128)) break;
+        }
+        return value;
+    }
+
+    while (i < data.length) {
+        const count = leb();
+        const id = leb();
+        for (let j = 0; j < count; j++) blocks.push(id);
+    }
+
+    return blocks;
+}
+
+// ===== 修正後の parseSchem (もどす.htmlの parse + convertTo3D 相当) =====
+async function parseSchem(file) {
+    const arrayBuffer = await file.arrayBuffer();
+    const full = new Uint8Array(arrayBuffer);
+    const sliced = full.slice(4);
+    const buffer = Buffer.from(sliced);
+    const data = schema.fromBuffer(buffer, undefined, true);
+
+    const blocks = [];
+
+    for (const c of data.chunks) {
+        const arr = decodeBlocks(c);
+        let i = 0;
+
+        for (let x = 0; x < 32; x++) {
+            for (let y = 0; y < 32; y++) {
+                for (let z = 0; z < 32; z++) {
+                    const id = arr[i++];
+                    if (id === 0) continue;
+
+                    blocks.push({
+                        x: c.x * 32 + x,
+                        y: c.y * 32 + y,
+                        z: c.z * 32 + z,
+                        id: id
+                    });
+                }
+            }
+        }
+    }
+
+    return {
+        name: data.name,
+        origin: [data.x, data.y, data.z],
+        size: [data.sizeX, data.sizeY, data.sizeZ],
+        blocks: blocks
+    };
+}
+
 const canvas = document.getElementById("renderCanvas");
 const engine = new BABYLON.Engine(canvas, true, {
     antialias: false,
@@ -61,10 +162,10 @@ let isAssetsLoaded = false;
 const FACE_MAP = [4, 5, 1, 0, 2, 3];
 
 const FACE_ROTATION = {
-    0: 0,  // front
-    1: 0,  // back
-    2: 0,  // right
-    3: 0,  // left
+    0: 0,   // front
+    1: 0,   // back
+    2: 0,   // right
+    3: 0,   // left
     4: -90, // top
     5: -90  // bottom
 };
@@ -182,151 +283,23 @@ function clearScene() {
     currentSchemBlocks = [];
 }
 
-function readULEB(bytes, state) {
-    let result = 0; let shift = 0;
-    while (true) {
-        const byte = bytes[state.offset++];
-        result |= (byte & 127) << shift;
-        if ((byte & 128) === 0) break;
-        shift += 7;
-    }
-    return result;
-}
-
-function decodeBlocks(bytes) {
-    const arr = new Uint16Array(32 * 32 * 32);
-    const state = { offset: 0 };
-    let currentIndex = 0;
-    while (state.offset < bytes.length) {
-        const skip = readULEB(bytes, state);
-        currentIndex += skip;
-        if (state.offset >= bytes.length) break;
-        const id = readULEB(bytes, state);
-        if (currentIndex < arr.length) {
-            arr[currentIndex] = id;
-        }
-        currentIndex += 1; // Move to next position after placing a block
-    }
-    return arr;
-}
-
-function idxToXYZ(i) {
-    // Matches もどす.html exactly: x is slowest, z is fastest
-    return { 
-        x: Math.floor(i / 1024), 
-        y: Math.floor(i / 32) % 32, 
-        z: i % 32 
-    };
-}
-
-async function parseSchem(file) {
-    const buf = await file.arrayBuffer();
-    const bytes = new Uint8Array(buf);
-    let offset = 4;
-    function readVarInt() {
-        let shift = 0; let result = 0;
-        while (true) {
-            const b = bytes[offset++];
-            result |= (b & 127) << shift;
-            if (!(b & 128)) break;
-            shift += 7;
-        }
-        return (result >>> 1) ^ -(result & 1);
-    }
-    function readString() {
-        const len = readVarInt();
-        const slice = bytes.slice(offset, offset + len);
-        offset += len;
-        return new TextDecoder().decode(slice);
-    }
-    function readBytes() {
-        const len = readVarInt();
-        const slice = bytes.slice(offset, offset + len);
-        offset += len;
-        return slice;
-    }
-    const schem = {
-        name: readString(),
-        x: readVarInt(), y: readVarInt(), z: readVarInt(),
-        sizeX: readVarInt(), sizeY: readVarInt(), sizeZ: readVarInt(),
-        chunks: []
-    };
-    while (offset < bytes.length) {
-        const count = readVarInt();
-        if (count <= 0) break;
-        for (let i = 0; i < count; i++) {
-            schem.chunks.push({ x: readVarInt(), y: readVarInt(), z: readVarInt(), blocks: readBytes() });
-        }
-    }
-    return schem;
-}
-
-function createFaceMesh(faceIndex, material, scaling, offset) {
-    // Create a plane that will be one side of the (possibly squashed) box
-    // The size of the plane depends on which face it is
-    let width = 1, height = 1;
-    switch(faceIndex) {
-        case 0: case 1: width = scaling.x; height = scaling.y; break; // Front/Back
-        case 2: case 3: width = scaling.z; height = scaling.y; break; // Right/Left
-        case 4: case 5: width = scaling.x; height = scaling.z; break; // Top/Bottom
-    }
-
-    const plane = BABYLON.MeshBuilder.CreatePlane(`face_${faceIndex}`, { width, height }, scene);
-    plane.material = material;
-
-    switch(faceIndex) {
-        case 0: // Front (Z-)
-            plane.rotation.y = 0; 
-            plane.position.set(offset.x, offset.y, -0.5 * scaling.z + offset.z); 
-            break;
-        case 1: // Back (Z+)
-            plane.rotation.y = Math.PI; 
-            plane.position.set(offset.x, offset.y, 0.5 * scaling.z + offset.z); 
-            break;
-        case 2: // Right (X+)
-            plane.rotation.y = -Math.PI / 2; 
-            plane.position.set(0.5 * scaling.x + offset.x, offset.y, offset.z); 
-            break;
-        case 3: // Left (X-)
-            plane.rotation.y = Math.PI / 2; 
-            plane.position.set(-0.5 * scaling.x + offset.x, offset.y, offset.z); 
-            break;
-        case 4: // Top (Y+)
-            plane.rotation.x = Math.PI / 2; 
-            plane.position.set(offset.x, 0.5 * scaling.y + offset.y, offset.z); 
-            break;
-        case 5: // Bottom (Y-)
-            plane.rotation.x = -Math.PI / 2; 
-            plane.position.set(offset.x, -0.5 * scaling.y + offset.y, offset.z); 
-            break;
-    }
-    plane.bakeCurrentTransformIntoVertices();
-    return plane;
-}
-
+// ===== 修正後の buildSchem =====
 async function buildSchem(schem) {
     clearScene();
     log("[BUILD] starting...");
     const blockPositions = new Map();
     const blockStats = new Map(); // Track status of every block ID
 
-    for (const chunk of schem.chunks) {
-        const decoded = decodeBlocks(new Uint8Array(chunk.blocks));
-        for (let i = 0; i < decoded.length; i++) {
-            const rawId = decoded[i];
-            if (rawId === 0) continue;
-            const blockId = rawId - 1;
-            const pos = idxToXYZ(i);
-            // Based on もどす.html and user feedback, chunk.z is depth, chunk.x is width
-            const worldPos = new BABYLON.Vector3(
-                chunk.z * 32 + pos.z, 
-                chunk.y * 32 + pos.y, 
-                chunk.x * 32 + pos.x
-            );
-            currentSchemBlocks.push({ id: blockId, x: worldPos.x, y: worldPos.y, z: worldPos.z });
-            if (!blockPositions.has(blockId)) blockPositions.set(blockId, []);
-            blockPositions.get(blockId).push(worldPos);
-        }
+    // パース済みの schem.blocks ( [{x, y, z, id}] ) から読み出す
+    for (const b of schem.blocks) {
+        const rawId = b.id;
+        if (rawId === 0) continue;
+        const blockId = rawId - 1; // 元コードと同じく 1 引く仕様を維持
+        
+        const worldPos = new BABYLON.Vector3(b.x, b.y, b.z);
+        currentSchemBlocks.push({ id: blockId, x: worldPos.x, y: worldPos.y, z: worldPos.z });
+        if (!blockPositions.has(blockId)) blockPositions.set(blockId, []);
+        blockPositions.get(blockId).push(worldPos);
     }
     window.currentSchemBlocks = currentSchemBlocks;
     
@@ -445,6 +418,47 @@ async function buildSchem(schem) {
         const size = bounds.max.subtract(bounds.min).length();
         updateOrtho(size * 0.8);
     }
+}
+
+function createFaceMesh(faceIndex, material, scaling, offset) {
+    let width = 1, height = 1;
+    switch(faceIndex) {
+        case 0: case 1: width = scaling.x; height = scaling.y; break;
+        case 2: case 3: width = scaling.z; height = scaling.y; break;
+        case 4: case 5: width = scaling.x; height = scaling.z; break;
+    }
+
+    const plane = BABYLON.MeshBuilder.CreatePlane(`face_${faceIndex}`, { width, height }, scene);
+    plane.material = material;
+
+    switch(faceIndex) {
+        case 0:
+            plane.rotation.y = 0; 
+            plane.position.set(offset.x, offset.y, -0.5 * scaling.z + offset.z); 
+            break;
+        case 1:
+            plane.rotation.y = Math.PI; 
+            plane.position.set(offset.x, offset.y, 0.5 * scaling.z + offset.z); 
+            break;
+        case 2:
+            plane.rotation.y = -Math.PI / 2; 
+            plane.position.set(0.5 * scaling.x + offset.x, offset.y, offset.z); 
+            break;
+        case 3:
+            plane.rotation.y = Math.PI / 2; 
+            plane.position.set(-0.5 * scaling.x + offset.x, offset.y, offset.z); 
+            break;
+        case 4:
+            plane.rotation.x = Math.PI / 2; 
+            plane.position.set(offset.x, 0.5 * scaling.y + offset.y, offset.z); 
+            break;
+        case 5:
+            plane.rotation.x = -Math.PI / 2; 
+            plane.position.set(offset.x, -0.5 * scaling.y + offset.y, offset.z); 
+            break;
+    }
+    plane.bakeCurrentTransformIntoVertices();
+    return plane;
 }
 
 function updateOrtho(val) {
