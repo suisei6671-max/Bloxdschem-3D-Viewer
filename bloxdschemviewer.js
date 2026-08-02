@@ -283,6 +283,7 @@ function clearScene() {
 }
 
 // ===== 修正版 buildSchem =====
+// ===== 修正版 buildSchem =====
 async function buildSchem(schem) {
     clearScene();
     log("[BUILD] starting...");
@@ -315,85 +316,67 @@ async function buildSchem(schem) {
             continue;
         }
 
-        // Slab 描画ロジックの修正
+        // Slab 判定および配置・回転解析
         let currentScaling = new BABYLON.Vector3(1, 1, 1);
         let currentOffset = new BABYLON.Vector3(0, 0, 0);
         let modelRotation = new BABYLON.Vector3(0, 0, 0);
         let faceToTexMap = [...FACE_MAP];
 
         if (block.model === "Slab") {
-    const hp = block.halfblockPlacement ?? 1;
-    const rot = block.rot ?? 1;
-
-    // 1. スケーリング設定
-    currentScaling.y = 0.5;
-
-    // 2. 面ごとの個別座標設定（中間変数を使わずダイレクトに計算）
-    for (let face = 0; face < 6; face++) {
-        let texIndex = FACE_MAP[face];
-        
-        // 独自メッシュ生成
-        const plane = BABYLON.MeshBuilder.CreatePlane(`face_${face}`, {
-            width: (face === 2 || face === 3) ? currentScaling.z : currentScaling.x,
-            height: (face === 4 || face === 5) ? currentScaling.z : currentScaling.y
-        }, scene);
-
-        // 基本位置（通常のBox/Slab面配置）
-        let px = 0, py = 0, pz = 0;
-        let rx = 0, ry = 0, rz = 0;
-
-        // 面の向きに応じた基本位置・回転
-        switch(face) {
-            case 0: pz = -0.25; break;
-            case 1: pz = 0.25; ry = Math.PI; break;
-            case 2: px = 0.5; ry = -Math.PI / 2; break;
-            case 3: px = -0.5; ry = Math.PI / 2; break;
-            case 4: py = 0.25; rx = Math.PI / 2; break;
-            case 5: py = -0.25; rx = -Math.PI / 2; break;
-        }
-
-        // halfblockPlacement による直接オフセット＆回転ベイク
-        if (hp === 0) {
-            // top
-            py += 0.25;
-        } else if (hp === 1) {
-            // bottom
-            py -= 0.25;
-        } else if (hp === 2) {
-            // side: rot1~4 に応じたトランスフォームの直接焼き込み
-            const rotMatrix = BABYLON.Matrix.Identity();
+            const fullName = block.name || "";
             
-            if (rot === 1) {
-                rotMatrix.copyFrom(BABYLON.Matrix.RotationX(Math.PI / 2));
-                pz -= 0.25;
-                texIndex = [2, 3, 1, 0, 4, 5][face];
-            } else if (rot === 2) {
-                rotMatrix.copyFrom(BABYLON.Matrix.RotationZ(Math.PI / 2));
-                px -= 0.25;
-                texIndex = [1, 0, 2, 3, 4, 5][face];
-            } else if (rot === 3) {
-                rotMatrix.copyFrom(BABYLON.Matrix.RotationX(-Math.PI / 2));
-                pz += 0.25;
-                texIndex = [3, 2, 0, 1, 4, 5][face];
-            } else if (rot === 4) {
-                rotMatrix.copyFrom(BABYLON.Matrix.RotationZ(-Math.PI / 2));
-                px += 0.25;
-                texIndex = [0, 1, 3, 2, 4, 5][face];
+            // 1. 位置(top / bottom / side)の抽出
+            let placement = "bottom"; // デフォルト
+            if (fullName.includes("|top") || block.halfblockPlacement === 0 || block.halfblockPlacement === "top") {
+                placement = "top";
+            } else if (fullName.includes("|side") || block.halfblockPlacement === 2 || block.halfblockPlacement === "side") {
+                placement = "side";
+            } else if (fullName.includes("|bottom") || block.halfblockPlacement === 1) {
+                placement = "bottom";
             }
 
-            plane.position.set(px, py, pz);
-            plane.rotation.set(rx, ry, rz);
-            plane.bakeCurrentTransformIntoVertices();
-            plane.bakeTransformIntoVertices(rotMatrix);
-        } else {
-            plane.position.set(px, py, pz);
-            plane.rotation.set(rx, ry, rz);
-            plane.bakeCurrentTransformIntoVertices();
-        }
+            // 2. 向き(rot1 ~ rot4)の抽出
+            let rotNum = 1;
+            const rotMatch = fullName.match(/rot(\d)/);
+            if (rotMatch) {
+                rotNum = parseInt(rotMatch[1], 10);
+            } else if (typeof block.rot === "number") {
+                rotNum = block.rot;
+            } else if (typeof block.rot === "string") {
+                const m = block.rot.match(/\d/);
+                if (m) rotNum = parseInt(m[0], 10);
+            }
 
-        // テクスチャ適用 & ThinInstance バッファ設定へ続く...
-    }
-}
+            // 3. 配置に応じたトランスフォーム設定
+            if (placement === "top") {
+                currentScaling.y = 0.5;
+                currentOffset.y = 0.25;
+            } else if (placement === "bottom") {
+                currentScaling.y = 0.5;
+                currentOffset.y = -0.25;
+            } else if (placement === "side") {
+                currentScaling.y = 0.5;
+
+                // rot1~4 に応じた回転と押し当てオフセット
+                if (rotNum === 1) { // Z- 方向
+                    modelRotation.x = Math.PI / 2;
+                    currentOffset.z = -0.25;
+                    faceToTexMap = [2, 3, 1, 0, 4, 5];
+                } else if (rotNum === 2) { // X- 方向
+                    modelRotation.z = Math.PI / 2;
+                    currentOffset.x = -0.25;
+                    faceToTexMap = [1, 0, 2, 3, 4, 5];
+                } else if (rotNum === 3) { // Z+ 方向
+                    modelRotation.x = -Math.PI / 2;
+                    currentOffset.z = 0.25;
+                    faceToTexMap = [3, 2, 0, 1, 4, 5];
+                } else if (rotNum === 4) { // X+ 方向
+                    modelRotation.z = -Math.PI / 2;
+                    currentOffset.x = 0.25;
+                    faceToTexMap = [0, 1, 3, 2, 4, 5];
+                }
+            }
+        }
 
         let facesCreated = 0;
         for (let face = 0; face < 6; face++) {
@@ -417,7 +400,7 @@ async function buildSchem(schem) {
 
             const faceMesh = createFaceMesh(face, mat, currentScaling, currentOffset);
             
-            // モデル全体の回転を行列でベイク
+            // モデルレベルの回転を適用
             if (modelRotation.length() > 0) {
                 const rotationMatrix = BABYLON.Matrix.RotationYawPitchRoll(modelRotation.y, modelRotation.x, modelRotation.z);
                 faceMesh.bakeTransformIntoVertices(rotationMatrix);
