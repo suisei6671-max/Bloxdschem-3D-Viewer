@@ -1,124 +1,18 @@
-const VERSION = "alpha-0.38-slab-placement-fix";
+const VERSION = "alpha-0.39-official-slab-logic-sync";
 
 const logEl = document.getElementById("log");
 
 function log(...a) {
-    console.log(...a);
+    const s = a.map(v => typeof v === "string" ? v : JSON.stringify(v)).join(" ");
+    console.log(s);
     if (logEl) {
-        logEl.textContent += a.map(v => typeof v === "string" ? v : JSON.stringify(v)).join(" ") + "\n";
+        logEl.innerText += s + "\n";
         logEl.scrollTop = logEl.scrollHeight;
     }
 }
 
-log("[BOOT]", VERSION);
-
-// ===== avsc と Buffer の読み込み・設定 =====
-import avsc from "https://esm.sh/avsc@5.7.4";
-import { Buffer } from "https://esm.sh/buffer@6.0.3";
-
-window.Buffer = Buffer;
-
-// ===== Schema 定義 =====
-const schema = avsc.Type.forSchema({
-    type: "record",
-    name: "Schematic",
-    fields: [
-        { name: "name", type: "string" },
-        { name: "x", type: "int" },
-        { name: "y", type: "int" },
-        { name: "z", type: "int" },
-        { name: "sizeX", type: "int" },
-        { name: "sizeY", type: "int" },
-        { name: "sizeZ", type: "int" },
-        {
-            name: "chunks",
-            type: {
-                type: "array",
-                items: {
-                    type: "record",
-                    fields: [
-                        { name: "x", type: "int" },
-                        { name: "y", type: "int" },
-                        { name: "z", type: "int" },
-                        { name: "blocks", type: "bytes" }
-                    ]
-                }
-            }
-        }
-    ]
-});
-
-// ===== decodeBlocks =====
-function decodeBlocks(chunk) {
-    let i = 0;
-    const data = chunk.blocks;
-    const blocks = [];
-
-    function leb() {
-        let shift = 0, value = 0;
-        while (true) {
-            const byte = data[i++];
-            value |= (byte & 127) << shift;
-            shift += 7;
-            if (!(byte & 128)) break;
-        }
-        return value;
-    }
-
-    while (i < data.length) {
-        const count = leb();
-        const id = leb();
-        for (let j = 0; j < count; j++) blocks.push(id);
-    }
-
-    return blocks;
-}
-
-// ===== parseSchem =====
-async function parseSchem(file) {
-    const arrayBuffer = await file.arrayBuffer();
-    const full = new Uint8Array(arrayBuffer);
-    const sliced = full.slice(4);
-    const buffer = Buffer.from(sliced);
-    const data = schema.fromBuffer(buffer, undefined, true);
-
-    const blocks = [];
-
-    for (const c of data.chunks) {
-        const arr = decodeBlocks(c);
-        let i = 0;
-
-        for (let x = 0; x < 32; x++) {
-            for (let y = 0; y < 32; y++) {
-                for (let z = 0; z < 32; z++) {
-                    const id = arr[i++];
-                    if (id === 0) continue;
-
-                    blocks.push({
-                        x: c.x * 32 + x,
-                        y: c.y * 32 + y,
-                        z: c.z * 32 + z,
-                        id: id
-                    });
-                }
-            }
-        }
-    }
-
-    return {
-        name: data.name,
-        origin: [data.x, data.y, data.z],
-        size: [data.sizeX, data.sizeY, data.sizeZ],
-        blocks: blocks
-    };
-}
-
 const canvas = document.getElementById("renderCanvas");
-const engine = new BABYLON.Engine(canvas, true, {
-    antialias: false,
-    preserveDrawingBuffer: true,
-    stencil: true
-});
+const engine = new BABYLON.Engine(canvas, true);
 
 const scene = new BABYLON.Scene(engine);
 scene.clearColor = new BABYLON.Color4(0, 0, 0, 0);
@@ -136,7 +30,15 @@ camera.attachControl(canvas, true, false);
 camera.minZ = -1000;
 camera.maxZ = 1000;
 
-// Custom Zoom for Orthographic Camera
+function updateOrtho(size) {
+    const aspect = canvas.width / canvas.height;
+    camera.orthoTop = size;
+    camera.orthoBottom = -size;
+    camera.orthoLeft = -size * aspect;
+    camera.orthoRight = size * aspect;
+}
+updateOrtho(10);
+
 canvas.addEventListener("wheel", (e) => {
     e.preventDefault();
     const delta = e.deltaY > 0 ? 1.1 : 0.9;
@@ -150,31 +52,29 @@ const light = new BABYLON.HemisphericLight(
     new BABYLON.Vector3(0, 1, 0),
     scene
 );
-light.intensity = 2;
+light.intensity = 1.5;
 
-const textureData = {};
-const textureCache = new Map();
+// Assets
 let blockMap = {};
-let currentSchemBlocks = [];
+let textureData = {};
+let textureCache = new Map();
 let isAssetsLoaded = false;
 
-const FACE_MAP = [4, 5, 1, 0, 2, 3];
-
-const FACE_ROTATION = {
-    0: 0,   // front
-    1: 0,   // back
-    2: 0,   // right
-    3: 0,   // left
-    4: -90, // top
-    5: -90  // bottom
-};
-
-async function extractTextures() {
+async function initAssets() {
+    if (isAssetsLoaded) return;
+    log("[ASSETS] Loading assets...");
     try {
-        log("[TEXTURE] Fetching images.js...");
-        const res = await fetch("./images.js");
-        const src = await res.text();
-        
+        const [blockDataRes, imagesJsRes] = await Promise.all([
+            fetch("blockData.json"),
+            fetch("images.js")
+        ]);
+        const blockData = await blockDataRes.json();
+        blockMap = blockData.reduce((acc, b, i) => {
+            acc[i] = b;
+            return acc;
+        }, {});
+
+        const src = await imagesJsRes.text();
         const pngToIdRegex = /"\.\/([^"]+?)\.png"\s*:\s*(\d+)/g;
         const pngMap = new Map();
         let m;
@@ -185,14 +85,12 @@ async function extractTextures() {
             pngMap.set(filename, id);
             pngMap.set(fullPath, id);
         }
-        log("[TEXTURE] Found", pngMap.size, "filename mappings");
 
         const idToDataRegex = /(\d+)\s*:\s*[^=]*?=>\s*\{[^}]*?exports\s*=\s*"(data:image\/png;base64,[^"]+)"/g;
         const idToData = new Map();
         while ((m = idToDataRegex.exec(src)) !== null) {
             idToData.set(parseInt(m[1]), m[2]);
         }
-        log("[TEXTURE] Found", idToData.size, "base64 modules");
 
         let count = 0;
         pngMap.forEach((id, name) => {
@@ -201,49 +99,11 @@ async function extractTextures() {
                 count++;
             }
         });
-
-        if (count < 100) {
-            log("[TEXTURE] Low mapping count, trying fallback data extraction...");
-            const fallbackDataRegex = /(\d+)\s*:\s*.*?exports\s*=\s*"(data:image\/png;base64,[^"]+)"/g;
-            while ((m = fallbackDataRegex.exec(src)) !== null) {
-                const id = parseInt(m[1]);
-                if (!idToData.has(id)) {
-                    idToData.set(id, m[2]);
-                    pngMap.forEach((mappedId, name) => {
-                        if (mappedId === id && !textureData[name]) {
-                            textureData[name] = m[2];
-                            count++;
-                        }
-                    });
-                }
-            }
-        }
-
-        log("[TEXTURE] Successfully mapped", count, "textures");
-    } catch (e) { log("[TEXTURE ERROR]", e.message); }
-}
-
-async function loadBlockData() {
-    try {
-        const res = await fetch("./blockData.json");
-        const json = await res.json();
-        blockMap = {};
-        if (Array.isArray(json)) {
-            for (let i = 0; i < json.length; i++) blockMap[i] = json[i];
-        } else {
-            blockMap = json;
-        }
-        log("[BLOCK DATA] Loaded", Object.keys(blockMap).length, "entries");
-    } catch (e) { log("[BLOCK DATA ERROR]", e.message); }
-}
-
-async function initAssets() {
-    if (isAssetsLoaded) return;
-    log("[INIT] Loading assets...");
-    await extractTextures();
-    await loadBlockData();
-    isAssetsLoaded = true;
-    log("[INIT] Assets ready");
+        log(`[ASSETS] Loaded ${Object.keys(blockMap).length} blocks and ${count} textures.`);
+        isAssetsLoaded = true;
+    } catch (e) {
+        log("[ASSETS] Error:", e);
+    }
 }
 
 async function getRotatedTexture(name, deg) {
@@ -276,370 +136,205 @@ async function getRotatedTexture(name, deg) {
     });
 }
 
-function clearScene() {
-    scene.meshes.slice().forEach(m => m.dispose());
-    textureCache.clear();
-    currentSchemBlocks = [];
+// Bloxd Schematic Logic (Perfect Sync with もどす.html)
+function decodeBlocks(bytes) {
+    let i = 0;
+    const blocks = [];
+    function leb() {
+        let shift = 0, value = 0;
+        while (true) {
+            const byte = bytes[i++];
+            value |= (byte & 127) << shift;
+            shift += 7;
+            if (!(byte & 128)) break;
+        }
+        return value;
+    }
+    while (i < bytes.length) {
+        const count = leb();
+        const id = leb();
+        for (let j = 0; j < count; j++) blocks.push(id);
+    }
+    return blocks;
 }
 
-// ===== 修正版 buildSchem =====
-// ===== 修正版 buildSchem =====
-async function buildSchem(schem) {
-    clearScene();
-    log("[BUILD] starting...");
-    const blockPositions = new Map();
-    const blockStats = new Map();
-
-    for (const b of schem.blocks) {
-        const rawId = b.id;
-        if (rawId === 0) continue;
-        const blockId = rawId - 1;
-        
-        const worldPos = new BABYLON.Vector3(b.x, b.y, b.z);
-        currentSchemBlocks.push({ id: blockId, x: worldPos.x, y: worldPos.y, z: worldPos.z });
-        if (!blockPositions.has(blockId)) blockPositions.set(blockId, []);
-        blockPositions.get(blockId).push(worldPos);
-    }
-    window.currentSchemBlocks = currentSchemBlocks;
+async function parseSchem(file) {
+    const buf = await file.arrayBuffer();
+    const full = new Uint8Array(buf);
+    const sliced = full.slice(4);
     
-    let totalPlaced = 0;
-    for (const [blockId, positions] of blockPositions) {
-        const block = blockMap[blockId];
-        if (!block) {
-            blockStats.set(blockId, { status: "FAILED", reason: "Missing in blockData.json", count: positions.length });
-            continue;
+    // Simple Avro-like parser for the specific structure
+    let offset = 0;
+    function readStr() {
+        const len = sliced[offset++];
+        const s = new TextDecoder().decode(sliced.slice(offset, offset + len));
+        offset += len;
+        return s;
+    }
+    function readInt() {
+        let n = 0, s = 0;
+        while (true) {
+            const b = sliced[offset++];
+            n |= (b & 0x7f) << s;
+            if (!(b & 0x80)) break;
+            s += 7;
         }
-        
-        const textureInfo = block.textureInfo;
-        if (!textureInfo) {
-            blockStats.set(blockId, { status: "FAILED", reason: "No textureInfo", count: positions.length, name: block.name });
-            continue;
-        }
+        return (n >>> 1) ^ -(n & 1); // zigzag
+    }
 
-        // Slab 判定および配置・回転解析
-        let currentScaling = new BABYLON.Vector3(1, 1, 1);
-        let currentOffset = new BABYLON.Vector3(0, 0, 0);
-        let modelRotation = new BABYLON.Vector3(0, 0, 0);
-        let faceToTexMap = [...FACE_MAP];
+    const schem = { name: readStr(), x: readInt(), y: readInt(), z: readInt(), sizeX: readInt(), sizeY: readInt(), sizeZ: readInt(), chunks: [] };
+    const chunkCount = readInt();
+    for (let i = 0; i < chunkCount; i++) {
+        const cx = readInt(), cy = readInt(), cz = readInt();
+        const len = readInt();
+        const blocks = sliced.slice(offset, offset + len);
+        offset += len;
+        schem.chunks.push({ x: cx, y: cy, z: cz, blocks });
+    }
 
-        if (block.model === "Slab") {
-            const fullName = block.name || "";
-            
-            // 1. 位置(top / bottom / side)の抽出
-            let placement = "bottom"; // デフォルト
-            if (fullName.includes("|top") || block.halfblockPlacement === 0 || block.halfblockPlacement === "top") {
-                placement = "top";
-            } else if (fullName.includes("|side") || block.halfblockPlacement === 2 || block.halfblockPlacement === "side") {
-                placement = "side";
-            } else if (fullName.includes("|bottom") || block.halfblockPlacement === 1) {
-                placement = "bottom";
-            }
-
-            // 2. 向き(rot1 ~ rot4)の抽出
-            let rotNum = 1;
-            const rotMatch = fullName.match(/rot(\d)/);
-            if (rotMatch) {
-                rotNum = parseInt(rotMatch[1], 10);
-            } else if (typeof block.rot === "number") {
-                rotNum = block.rot;
-            } else if (typeof block.rot === "string") {
-                const m = block.rot.match(/\d/);
-                if (m) rotNum = parseInt(m[0], 10);
-            }
-
-            // 3. 配置に応じたトランスフォーム設定
-            if (placement === "top") {
-                currentScaling.y = 0.5;
-                currentOffset.y = 0.25;
-            } else if (placement === "bottom") {
-                currentScaling.y = 0.5;
-                currentOffset.y = -0.25;
-            } else if (placement === "side") {
-                currentScaling.y = 0.5;
-
-                // rot1~4 に応じた回転と押し当てオフセット
-                if (rotNum === 1) { // Z- 方向
-                    modelRotation.x = Math.PI / 2;
-                    currentOffset.z = -0.25;
-                    faceToTexMap = [2, 3, 1, 0, 4, 5];
-                } else if (rotNum === 2) { // X- 方向
-                    modelRotation.z = Math.PI / 2;
-                    currentOffset.x = -0.25;
-                    faceToTexMap = [1, 0, 2, 3, 4, 5];
-                } else if (rotNum === 3) { // Z+ 方向
-                    modelRotation.x = -Math.PI / 2;
-                    currentOffset.z = 0.25;
-                    faceToTexMap = [3, 2, 0, 1, 4, 5];
-                } else if (rotNum === 4) { // X+ 方向
-                    modelRotation.z = -Math.PI / 2;
-                    currentOffset.x = 0.25;
-                    faceToTexMap = [0, 1, 3, 2, 4, 5];
+    const finalBlocks = [];
+    for (const c of schem.chunks) {
+        const arr = decodeBlocks(new Uint8Array(c.blocks));
+        let i = 0;
+        for (let x = 0; x < 32; x++) {
+            for (let y = 0; y < 32; y++) {
+                for (let z = 0; z < 32; z++) {
+                    const id = arr[i++];
+                    if (id === 0) continue;
+                    finalBlocks.push({
+                        x: c.x * 32 + x,
+                        y: c.y * 32 + y,
+                        z: c.z * 32 + z,
+                        id: id
+                    });
                 }
             }
         }
-
-        let facesCreated = 0;
-        for (let face = 0; face < 6; face++) {
-            const texIndex = faceToTexMap[face];
-            const texName = Array.isArray(textureInfo) ? textureInfo[texIndex] : textureInfo;
-            if (!texName) continue;
-
-            const rotDeg = FACE_ROTATION[face] ?? 0;
-            const mat = new BABYLON.StandardMaterial(`mat_${blockId}_f${face}`, scene);
-            const tex = await getRotatedTexture(texName, rotDeg);
-            if (!tex) {
-                mat.diffuseColor = new BABYLON.Color3(0.8, 0.8, 0.8);
-            } else {
-                mat.diffuseTexture = tex;
-                mat.diffuseTexture.hasAlpha = true;
-            }
-            mat.disableLighting = true;
-            mat.emissiveColor = new BABYLON.Color3(1, 1, 1);
-            mat.backFaceCulling = true;
-            mat.alphaMode = BABYLON.Engine.ALPHA_COMBINE;
-
-            const faceMesh = createFaceMesh(face, mat, currentScaling, currentOffset);
-            
-            // モデルレベルの回転を適用
-            if (modelRotation.length() > 0) {
-                const rotationMatrix = BABYLON.Matrix.RotationYawPitchRoll(modelRotation.y, modelRotation.x, modelRotation.z);
-                faceMesh.bakeTransformIntoVertices(rotationMatrix);
-            }
-
-            const matricesData = new Float32Array(positions.length * 16);
-            for (let i = 0; i < positions.length; i++) {
-                const matrix = BABYLON.Matrix.Translation(positions[i].x, positions[i].y, positions[i].z);
-                matrix.copyToArray(matricesData, i * 16);
-            }
-            faceMesh.thinInstanceSetBuffer("matrix", matricesData, 16);
-            facesCreated++;
-        }
-        
-        if (facesCreated > 0) {
-            blockStats.set(blockId, { status: "SUCCESS", count: positions.length, name: block.name, model: block.model });
-            totalPlaced += positions.length;
-        } else {
-            blockStats.set(blockId, { status: "FAILED", reason: "No faces created (empty textureInfo?)", count: positions.length, name: block.name });
-        }
     }
-    
-    log("[BUILD SUMMARY]");
-    blockStats.forEach((stat, id) => {
-        const nameStr = stat.name ? ` (${stat.name})` : "";
-        const modelStr = stat.model ? ` [Model: ${stat.model}]` : "";
-        if (stat.status === "SUCCESS") {
-            log(` ✅ ID ${id}${nameStr}${modelStr}: ${stat.count} blocks placed`);
-        } else {
-            log(` ❌ ID ${id}${nameStr}: FAILED - ${stat.reason} (${stat.count} blocks skipped)`);
-        }
-    });
-    
-    log("[DONE] total blocks placed:", totalPlaced);
-    
-    const bounds = getModelWorldBounds();
-    if (bounds) {
-        const center = BABYLON.Vector3.Center(bounds.min, bounds.max);
-        camera.setTarget(center);
-        const size = bounds.max.subtract(bounds.min).length();
-        updateOrtho(size * 0.8);
-    }
+    return { name: schem.name, blocks: finalBlocks };
 }
 
 function createFaceMesh(faceIndex, material, scaling, offset) {
     let width = 1, height = 1;
     switch(faceIndex) {
-        case 0: case 1: width = scaling.x; height = scaling.y; break;
-        case 2: case 3: width = scaling.z; height = scaling.y; break;
-        case 4: case 5: width = scaling.x; height = scaling.z; break;
+        case 0: case 1: width = scaling.x; height = scaling.y; break; // Front/Back
+        case 2: case 3: width = scaling.z; height = scaling.y; break; // Right/Left
+        case 4: case 5: width = scaling.x; height = scaling.z; break; // Top/Bottom
     }
-
     const plane = BABYLON.MeshBuilder.CreatePlane(`face_${faceIndex}`, { width, height }, scene);
     plane.material = material;
-
     switch(faceIndex) {
-        case 0:
-            plane.rotation.y = 0; 
-            plane.position.set(offset.x, offset.y, -0.5 * scaling.z + offset.z); 
-            break;
-        case 1:
-            plane.rotation.y = Math.PI; 
-            plane.position.set(offset.x, offset.y, 0.5 * scaling.z + offset.z); 
-            break;
-        case 2:
-            plane.rotation.y = -Math.PI / 2; 
-            plane.position.set(0.5 * scaling.x + offset.x, offset.y, offset.z); 
-            break;
-        case 3:
-            plane.rotation.y = Math.PI / 2; 
-            plane.position.set(-0.5 * scaling.x + offset.x, offset.y, offset.z); 
-            break;
-        case 4:
-            plane.rotation.x = Math.PI / 2; 
-            plane.position.set(offset.x, 0.5 * scaling.y + offset.y, offset.z); 
-            break;
-        case 5:
-            plane.rotation.x = -Math.PI / 2; 
-            plane.position.set(offset.x, -0.5 * scaling.y + offset.y, offset.z); 
-            break;
+        case 0: plane.rotation.y = 0; plane.position.set(offset.x, offset.y, -0.5 * scaling.z + offset.z); break;
+        case 1: plane.rotation.y = Math.PI; plane.position.set(offset.x, offset.y, 0.5 * scaling.z + offset.z); break;
+        case 2: plane.rotation.y = -Math.PI / 2; plane.position.set(0.5 * scaling.x + offset.x, offset.y, offset.z); break;
+        case 3: plane.rotation.y = Math.PI / 2; plane.position.set(-0.5 * scaling.x + offset.x, offset.y, offset.z); break;
+        case 4: plane.rotation.x = Math.PI / 2; plane.position.set(offset.x, 0.5 * scaling.y + offset.y, offset.z); break;
+        case 5: plane.rotation.x = -Math.PI / 2; plane.position.set(offset.x, -0.5 * scaling.y + offset.y, offset.z); break;
     }
     plane.bakeCurrentTransformIntoVertices();
     return plane;
 }
 
-function updateOrtho(val) {
-    const w = canvas.width || 800;
-    const h = canvas.height || 600;
-    const aspect = w / h;
-    camera.orthoTop = val;
-    camera.orthoBottom = -val;
-    camera.orthoLeft = -val * aspect;
-    camera.orthoRight = val * aspect;
-}
+const FACE_MAP = [4, 5, 1, 0, 2, 3]; // Bloxd: Front, Back, Right, Left, Top, Bottom
+const FACE_ROTATION = { 0: 0, 1: 0, 2: 0, 3: 0, 4: -90, 5: -90 };
 
-function getModelWorldBounds() {
-    let min = new BABYLON.Vector3(Infinity, Infinity, Infinity);
-    let max = new BABYLON.Vector3(-Infinity, -Infinity, -Infinity);
-    let found = false;
-    scene.meshes.forEach(m => {
-        if (!m.isEnabled() || !m.isVisible || m.getTotalVertices() === 0) return;
-        const matrices = m.thinInstanceGetWorldMatrices();
-        if (matrices && matrices.length > 0) {
-            const localMin = m.getBoundingInfo().boundingBox.minimum;
-            const localMax = m.getBoundingInfo().boundingBox.maximum;
-            matrices.forEach(matrix => {
-                const worldMin = BABYLON.Vector3.TransformCoordinates(localMin, matrix);
-                const worldMax = BABYLON.Vector3.TransformCoordinates(localMax, matrix);
-                min = BABYLON.Vector3.Minimize(min, worldMin);
-                min = BABYLON.Vector3.Minimize(min, worldMax);
-                max = BABYLON.Vector3.Maximize(max, worldMin);
-                max = BABYLON.Vector3.Maximize(max, worldMax);
-                found = true;
-            });
+async function buildSchem(schem) {
+    clearScene();
+    log("[BUILD] starting...");
+    const blockPositions = new Map();
+    const blockStats = new Map();
+    window.currentSchemBlocks = [];
+
+    for (const b of schem.blocks) {
+        const blockId = b.id - 1;
+        const worldPos = new BABYLON.Vector3(b.x, b.y, b.z);
+        window.currentSchemBlocks.push({ id: blockId, x: b.x, y: b.y, z: b.z });
+        if (!blockPositions.has(blockId)) blockPositions.set(blockId, []);
+        blockPositions.get(blockId).push(worldPos);
+    }
+    
+    let totalPlaced = 0;
+    for (const [blockId, positions] of blockPositions) {
+        const block = blockMap[blockId];
+        if (!block || !block.textureInfo) {
+            blockStats.set(blockId, { status: "FAILED", reason: "Missing data", count: positions.length });
+            continue;
         }
-    });
-    return found ? { min, max } : null;
-}
 
-async function instantCapture() {
-    log("[CAPTURE] starting...");
-    const oldAlpha = camera.alpha;
-    const oldBeta = camera.beta;
-    const oldOrthoTop = camera.orthoTop;
-    const oldOrthoBottom = camera.orthoBottom;
-    const oldOrthoLeft = camera.orthoLeft;
-    const oldOrthoRight = camera.orthoRight;
+        const hp = block.halfblockPlacement ?? 0;
+        const rot = block.rot ?? 1;
+        const isSlab = block.model === "Slab";
 
-    const style = document.querySelector('input[name="angleStyle"]:checked').value;
-    if (style === "wiki") {
-        camera.alpha = -0.785398;
-        camera.beta = 1.0472;
-    } else {
-        camera.alpha = Math.PI / 4;
-        camera.beta = Math.atan(Math.SQRT2);
-    }
-    
-    const bounds = getModelWorldBounds();
-    let captureBaseSize = 1024;
-    if (bounds) {
-        camera.setTarget(BABYLON.Vector3.Center(bounds.min, bounds.max));
-        const size = bounds.max.subtract(bounds.min).length();
-        const captureOrtho = size * 1.5; 
-        camera.orthoTop = captureOrtho;
-        camera.orthoBottom = -captureOrtho;
-        camera.orthoLeft = -captureOrtho;
-        camera.orthoRight = captureOrtho;
-        if (size > 32) captureBaseSize = 2048;
-        if (size > 64) captureBaseSize = 4096;
-    }
+        let facesCreated = 0;
+        for (let face = 0; face < 6; face++) {
+            let scaling = new BABYLON.Vector3(1, 1, 1);
+            let offset = new BABYLON.Vector3(0, 0, 0);
+            let modelRot = new BABYLON.Vector3(0, 0, 0);
 
-    const CAPTURE_SIZE = captureBaseSize; 
-    log("[CAPTURE] resolution:", CAPTURE_SIZE);
-    
-    const rtt = new BABYLON.RenderTargetTexture("highResRTT", CAPTURE_SIZE, scene, false, true);
-    rtt.renderList = scene.meshes.filter(m => m.isEnabled() && m.isVisible);
-    rtt.activeCamera = camera;
-    rtt.clearColor = new BABYLON.Color4(0, 0, 0, 0);
-    
-    scene.render();
-    rtt.render();
-    
-    rtt.readPixels().then((pixels) => {
-        let minX = CAPTURE_SIZE, maxX = 0, minY = CAPTURE_SIZE, maxY = 0;
-        let found = false;
-        for (let y = 0; y < CAPTURE_SIZE; y++) {
-            for (let x = 0; x < CAPTURE_SIZE; x++) {
-                const alpha = pixels[(y * CAPTURE_SIZE + x) * 4 + 3];
-                if (alpha > 0) {
-                    if (x < minX) minX = x;
-                    if (x > maxX) maxX = x;
-                    if (y < minY) minY = y;
-                    if (y > maxY) maxY = y;
-                    found = true;
+            if (isSlab) {
+                scaling.y = 0.5;
+                if (hp === 0) { // Top (Bloxd 0)
+                    offset.y = 0.25;
+                } else if (hp === 1) { // Bottom (Bloxd 1)
+                    offset.y = -0.25;
+                } else if (hp === 2) { // Side (Bloxd 2)
+                    modelRot.x = Math.PI / 2;
+                    if (rot === 1) { offset.z = -0.25; modelRot.y = 0; }
+                    else if (rot === 2) { offset.x = -0.25; modelRot.y = -Math.PI / 2; }
+                    else if (rot === 3) { offset.z = 0.25; modelRot.y = Math.PI; }
+                    else if (rot === 4) { offset.x = 0.25; modelRot.y = Math.PI / 2; }
                 }
             }
-        }
 
-        if (!found) {
-            log("[CAPTURE ERROR] No content found");
-            rtt.dispose();
-            return;
-        }
+            const texIndex = FACE_MAP[face];
+            const texName = Array.isArray(block.textureInfo) ? block.textureInfo[texIndex] : block.textureInfo;
+            if (!texName) continue;
 
-        const tempCanvas = document.createElement("canvas");
-        tempCanvas.width = CAPTURE_SIZE; tempCanvas.height = CAPTURE_SIZE;
-        const tempCtx = tempCanvas.getContext("2d");
-        const imgData = tempCtx.createImageData(CAPTURE_SIZE, CAPTURE_SIZE);
-        for (let y = 0; y < CAPTURE_SIZE; y++) {
-            for (let x = 0; x < CAPTURE_SIZE; x++) {
-                const sourceIndex = (y * CAPTURE_SIZE + x) * 4;
-                const targetIndex = ((CAPTURE_SIZE - 1 - y) * CAPTURE_SIZE + x) * 4;
-                imgData.data[targetIndex] = pixels[sourceIndex];
-                imgData.data[targetIndex + 1] = pixels[sourceIndex + 1];
-                imgData.data[targetIndex + 2] = pixels[sourceIndex + 2];
-                imgData.data[targetIndex + 3] = pixels[sourceIndex + 3];
+            const mat = new BABYLON.StandardMaterial(`mat_${blockId}_f${face}`, scene);
+            const tex = await getRotatedTexture(texName, FACE_ROTATION[face] ?? 0);
+            if (tex) { mat.diffuseTexture = tex; mat.diffuseTexture.hasAlpha = true; }
+            else { mat.diffuseColor = new BABYLON.Color3(0.8, 0.8, 0.8); }
+            mat.disableLighting = true;
+            mat.emissiveColor = new BABYLON.Color3(1, 1, 1);
+            mat.backFaceCulling = true;
+            mat.alphaMode = BABYLON.Engine.ALPHA_COMBINE;
+
+            const faceMesh = createFaceMesh(face, mat, scaling, offset);
+            if (modelRot.length() > 0) {
+                const rotMat = BABYLON.Matrix.RotationYawPitchRoll(modelRot.y, modelRot.x, modelRot.z);
+                faceMesh.bakeTransformIntoVertices(rotMat);
             }
+
+            const matricesData = new Float32Array(positions.length * 16);
+            for (let i = 0; i < positions.length; i++) {
+                BABYLON.Matrix.Translation(positions[i].x, positions[i].y, positions[i].z).copyToArray(matricesData, i * 16);
+            }
+            faceMesh.thinInstanceSetBuffer("matrix", matricesData, 16);
+            facesCreated++;
         }
-        tempCtx.putImageData(imgData, 0, 0);
-        const finalW = maxX - minX + 1;
-        const finalH = maxY - minY + 1;
-        const correctedMinY = CAPTURE_SIZE - maxY - 1;
-        const saveCanvas = document.createElement("canvas");
-        saveCanvas.width = finalW; saveCanvas.height = finalH;
-        const ctx = saveCanvas.getContext("2d");
-        ctx.drawImage(tempCanvas, minX, correctedMinY, finalW, finalH, 0, 0, finalW, finalH);
-        const link = document.createElement("a");
-        link.download = `bloxdschem_capture_${style}.png`;
-        link.href = saveCanvas.toDataURL("image/png");
-        link.click();
-        camera.alpha = oldAlpha;
-        camera.beta = oldBeta;
-        camera.orthoTop = oldOrthoTop;
-        camera.orthoBottom = oldOrthoBottom;
-        camera.orthoLeft = oldOrthoLeft;
-        camera.orthoRight = oldOrthoRight;
-        rtt.dispose();
-        log("[CAPTURE] done");
-    });
+        if (facesCreated > 0) {
+            blockStats.set(blockId, { status: "SUCCESS", count: positions.length, name: block.name });
+            totalPlaced += positions.length;
+        }
+    }
+    log(`[BUILD] DONE. Total: ${totalPlaced}`);
 }
 
-document.getElementById("buildBtn").onclick = async () => {
-    try {
-        log("[START]");
-        await initAssets();
-        const file = document.getElementById("schemInput").files[0];
-        if (!file) { alert("schemファイルを選択してください"); return; }
-        const schem = await parseSchem(file);
-        log("[SCHEM]", schem.name);
-        await buildSchem(schem);
-    } catch (e) { console.error(e); log("[ERROR]", e.message); }
-};
+function clearScene() {
+    scene.meshes.slice().forEach(m => m.dispose());
+    textureCache.clear();
+}
 
-window.instantCapture = instantCapture;
-engine.runRenderLoop(() => { scene.render(); });
-window.addEventListener("resize", () => { engine.resize(); updateOrtho(camera.orthoTop || 10); });
-updateOrtho(10);
+engine.runRenderLoop(() => scene.render());
+window.addEventListener("resize", () => { engine.resize(); updateOrtho(camera.orthoTop); });
 
-// Pre-load assets
-initAssets();
+document.getElementById("fileInput").addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    await initAssets();
+    const schem = await parseSchem(file);
+    log(`[SCHEM] ${schem.name}`);
+    await buildSchem(schem);
+});
 
-log("[READY]");
+log(`BloxdSchemViewer ${VERSION} ready.`);
