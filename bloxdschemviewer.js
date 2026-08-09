@@ -1,4 +1,4 @@
-const VERSION = "alpha-0.44-slab-final-logic";
+const VERSION = "alpha-0.45-texture-rotation-fixed";
 
 const logEl = document.getElementById("log");
 
@@ -241,7 +241,14 @@ function createFaceMesh(faceIndex, material, scaling, offset) {
 }
 
 const FACE_MAP = [4, 5, 1, 0, 2, 3]; // Bloxd order: Front, Back, Right, Left, Top, Bottom
-const DEFAULT_ROTATIONS = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 90, 5: -90 };
+const DEFAULT_ROTATIONS = { 
+    0: 0,   // Front
+    1: 0,   // Back
+    2: 0,   // Right
+    3: 0,   // Left
+    4: 90,  // Top (90 deg right)
+    5: -90  // Bottom (90 deg left)
+};
 
 async function buildSchem(schem) {
     clearScene();
@@ -270,6 +277,8 @@ async function buildSchem(schem) {
             let scaling = new BABYLON.Vector3(1, 1, 1);
             let offset = new BABYLON.Vector3(0, 0, 0);
             let texIndex = FACE_MAP[face];
+            
+            // Base rotation from global settings
             let rotation = DEFAULT_ROTATIONS[face] ?? 0;
 
             if (isSlab) {
@@ -281,14 +290,18 @@ async function buildSchem(schem) {
                     if (rot === 1) { // Z-
                         scaling.z = 0.5; offset.z = -0.25;
                         texIndex = [2, 3, 1, 0, 4, 5][face];
-                        if (face === 0) rotation = 90; if (face === 1) rotation = -90;
+                        // If the "Top/Bottom" texture is now on the "Front/Back" face, 
+                        // we apply the corresponding rotation.
+                        if (face === 0) rotation = 90;  // Front gets Top's rotation
+                        if (face === 1) rotation = -90; // Back gets Bottom's rotation
                     } else if (rot === 2) { // X-
                         scaling.x = 0.5; offset.x = -0.25;
                         texIndex = [1, 0, 2, 3, 4, 5][face];
                     } else if (rot === 3) { // Z+
                         scaling.z = 0.5; offset.z = 0.25;
                         texIndex = [3, 2, 1, 0, 4, 5][face];
-                        if (face === 0) rotation = -90; if (face === 1) rotation = 90;
+                        if (face === 0) rotation = -90; 
+                        if (face === 1) rotation = 90;
                     } else if (rot === 4) { // X+
                         scaling.x = 0.5; offset.x = 0.25;
                         texIndex = [0, 1, 2, 3, 4, 5][face];
