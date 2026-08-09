@@ -1,4 +1,4 @@
-const VERSION = "alpha-0.40-slab-placement-fix";
+const VERSION = "alpha-0.41-build-fix";
 
 const logEl = document.getElementById("log");
 
@@ -11,8 +11,42 @@ function log(...a) {
     }
 }
 
+// Load avsc and Buffer from esm.sh
+import avsc from "https://esm.sh/avsc@5.7.4";
+import { Buffer } from "https://esm.sh/buffer@6.0.3";
+window.Buffer = Buffer;
+
+const schema = avsc.Type.forSchema({
+    type: "record",
+    name: "Schematic",
+    fields: [
+        { name: "name", type: "string" },
+        { name: "x", type: "int" },
+        { name: "y", type: "int" },
+        { name: "z", type: "int" },
+        { name: "sizeX", type: "int" },
+        { name: "sizeY", type: "int" },
+        { name: "sizeZ", type: "int" },
+        {
+            name: "chunks",
+            type: {
+                type: "array",
+                items: {
+                    type: "record",
+                    fields: [
+                        { name: "x", type: "int" },
+                        { name: "y", type: "int" },
+                        { name: "z", type: "int" },
+                        { name: "blocks", type: "bytes" }
+                    ]
+                }
+            }
+        }
+    ]
+});
+
 const canvas = document.getElementById("renderCanvas");
-const engine = new BABYLON.Engine(canvas, true);
+const engine = new BABYLON.Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true });
 
 const scene = new BABYLON.Scene(engine);
 scene.clearColor = new BABYLON.Color4(0, 0, 0, 0);
@@ -49,10 +83,10 @@ canvas.addEventListener("wheel", (e) => {
 
 const light = new BABYLON.HemisphericLight(
     "light",
-    new BABYLON.Vector3(0, 1, 0),
+    new BABYLON.Vector3(0.5, 1, 0.2),
     scene
 );
-light.intensity = 1.5;
+light.intensity = 1.8;
 
 // Assets
 let blockMap = {};
@@ -60,21 +94,11 @@ let textureData = {};
 let textureCache = new Map();
 let isAssetsLoaded = false;
 
-async function initAssets() {
-    if (isAssetsLoaded) return;
-    log("[ASSETS] Loading assets...");
+async function extractTextures() {
     try {
-        const [blockDataRes, imagesJsRes] = await Promise.all([
-            fetch("blockData.json"),
-            fetch("images.js")
-        ]);
-        const blockData = await blockDataRes.json();
-        blockMap = blockData.reduce((acc, b, i) => {
-            acc[i] = b;
-            return acc;
-        }, {});
-
-        const src = await imagesJsRes.text();
+        const res = await fetch("./images.js");
+        const src = await res.text();
+        
         const pngToIdRegex = /"\.\/([^"]+?)\.png"\s*:\s*(\d+)/g;
         const pngMap = new Map();
         let m;
@@ -99,11 +123,31 @@ async function initAssets() {
                 count++;
             }
         });
-        log(`[ASSETS] Loaded ${Object.keys(blockMap).length} blocks and ${count} textures.`);
-        isAssetsLoaded = true;
-    } catch (e) {
-        log("[ASSETS] Error:", e);
-    }
+        log(`[TEXTURE] Successfully mapped ${count} textures.`);
+    } catch (e) { log("[TEXTURE ERROR]", e.message); }
+}
+
+async function loadBlockData() {
+    try {
+        const res = await fetch("./blockData.json");
+        const json = await res.json();
+        blockMap = {};
+        if (Array.isArray(json)) {
+            for (let i = 0; i < json.length; i++) blockMap[i] = json[i];
+        } else {
+            blockMap = json;
+        }
+        log("[BLOCK DATA] Loaded", Object.keys(blockMap).length, "entries");
+    } catch (e) { log("[BLOCK DATA ERROR]", e.message); }
+}
+
+async function initAssets() {
+    if (isAssetsLoaded) return;
+    log("[INIT] Loading assets...");
+    await extractTextures();
+    await loadBlockData();
+    isAssetsLoaded = true;
+    log("[INIT] Assets ready");
 }
 
 async function getRotatedTexture(name, deg) {
@@ -136,21 +180,21 @@ async function getRotatedTexture(name, deg) {
     });
 }
 
-// Bloxd Schematic Logic (Perfect Sync with もどす.html)
-function decodeBlocks(bytes) {
+function decodeBlocks(chunk) {
     let i = 0;
+    const data = chunk.blocks;
     const blocks = [];
     function leb() {
         let shift = 0, value = 0;
         while (true) {
-            const byte = bytes[i++];
+            const byte = data[i++];
             value |= (byte & 127) << shift;
             shift += 7;
             if (!(byte & 128)) break;
         }
         return value;
     }
-    while (i < bytes.length) {
+    while (i < data.length) {
         const count = leb();
         const id = leb();
         for (let j = 0; j < count; j++) blocks.push(id);
@@ -159,49 +203,22 @@ function decodeBlocks(bytes) {
 }
 
 async function parseSchem(file) {
-    const buf = await file.arrayBuffer();
-    const full = new Uint8Array(buf);
+    const arrayBuffer = await file.arrayBuffer();
+    const full = new Uint8Array(arrayBuffer);
     const sliced = full.slice(4);
-    
-    // Simple Avro-like parser for the specific structure
-    let offset = 0;
-    function readStr() {
-        const len = sliced[offset++];
-        const s = new TextDecoder().decode(sliced.slice(offset, offset + len));
-        offset += len;
-        return s;
-    }
-    function readInt() {
-        let n = 0, s = 0;
-        while (true) {
-            const b = sliced[offset++];
-            n |= (b & 0x7f) << s;
-            if (!(b & 0x80)) break;
-            s += 7;
-        }
-        return (n >>> 1) ^ -(n & 1); // zigzag
-    }
+    const buffer = Buffer.from(sliced);
+    const data = schema.fromBuffer(buffer, undefined, true);
 
-    const schem = { name: readStr(), x: readInt(), y: readInt(), z: readInt(), sizeX: readInt(), sizeY: readInt(), sizeZ: readInt(), chunks: [] };
-    const chunkCount = readInt();
-    for (let i = 0; i < chunkCount; i++) {
-        const cx = readInt(), cy = readInt(), cz = readInt();
-        const len = readInt();
-        const blocks = sliced.slice(offset, offset + len);
-        offset += len;
-        schem.chunks.push({ x: cx, y: cy, z: cz, blocks });
-    }
-
-    const finalBlocks = [];
-    for (const c of schem.chunks) {
-        const arr = decodeBlocks(new Uint8Array(c.blocks));
+    const blocks = [];
+    for (const c of data.chunks) {
+        const arr = decodeBlocks(c);
         let i = 0;
         for (let x = 0; x < 32; x++) {
             for (let y = 0; y < 32; y++) {
                 for (let z = 0; z < 32; z++) {
                     const id = arr[i++];
                     if (id === 0) continue;
-                    finalBlocks.push({
+                    blocks.push({
                         x: c.x * 32 + x,
                         y: c.y * 32 + y,
                         z: c.z * 32 + z,
@@ -211,7 +228,7 @@ async function parseSchem(file) {
             }
         }
     }
-    return { name: schem.name, blocks: finalBlocks };
+    return { name: data.name, blocks: blocks };
 }
 
 function createFaceMesh(faceIndex, material, scaling, offset) {
@@ -276,7 +293,7 @@ async function buildSchem(schem) {
             let modelRot = new BABYLON.Vector3(0, 0, 0);
 
             if (isSlab) {
-                // All slabs start as a Y-squashed box
+                // All slabs start as a Top Slab (height 0.5, y=0.25)
                 scaling.y = 0.5;
                 
                 if (hp === 0) { // top
@@ -284,23 +301,17 @@ async function buildSchem(schem) {
                 } else if (hp === 1) { // bottom
                     offset.y = -0.25;
                 } else if (hp === 2) { // side
-                    // Official logic: rotation.x = PI/2
-                    modelRot.x = Math.PI / 2;
-                    
-                    // Then apply rotation based on 'rot' and set offset
-                    // rot 1: Z-, 2: X-, 3: Z+, 4: X+
-                    if (rot === 1) {
-                        modelRot.y = 0;
-                        offset.z = -0.25;
-                    } else if (rot === 2) {
-                        modelRot.y = -Math.PI / 2;
-                        offset.x = -0.25;
-                    } else if (rot === 3) {
-                        modelRot.y = Math.PI;
-                        offset.z = 0.25;
-                    } else if (rot === 4) {
-                        modelRot.y = Math.PI / 2;
-                        offset.x = 0.25;
+                    // Base: Top Slab
+                    offset.y = 0.25;
+                    // Rotate to side
+                    if (rot === 1) { // Z- (Front)
+                        modelRot.x = -Math.PI / 2;
+                    } else if (rot === 2) { // X- (Left)
+                        modelRot.z = Math.PI / 2;
+                    } else if (rot === 3) { // Z+ (Back)
+                        modelRot.x = Math.PI / 2;
+                    } else if (rot === 4) { // X+ (Right)
+                        modelRot.z = -Math.PI / 2;
                     }
                 }
             }
@@ -337,6 +348,20 @@ async function buildSchem(schem) {
         }
     }
     log(`[BUILD] DONE. Total: ${totalPlaced}`);
+
+    // Auto center
+    if (totalPlaced > 0) {
+        const min = new BABYLON.Vector3(Infinity, Infinity, Infinity);
+        const max = new BABYLON.Vector3(-Infinity, -Infinity, -Infinity);
+        for (const b of schem.blocks) {
+            min.x = Math.min(min.x, b.x); min.y = Math.min(min.y, b.y); min.z = Math.min(min.z, b.z);
+            max.x = Math.max(max.x, b.x); max.y = Math.max(max.y, b.y); max.z = Math.max(max.z, b.z);
+        }
+        const center = min.add(max).scale(0.5);
+        camera.setTarget(center);
+        const size = Math.max(max.x - min.x, max.y - min.y, max.z - min.z);
+        updateOrtho(size * 0.8 + 2);
+    }
 }
 
 function clearScene() {
@@ -345,8 +370,79 @@ function clearScene() {
 }
 
 engine.runRenderLoop(() => scene.render());
-window.addEventListener("resize", () => { engine.resize(); updateOrtho(camera.orthoTop); });
 
+// Angle Style
+document.getElementsByName("angleStyle").forEach(radio => {
+    radio.addEventListener("change", (e) => {
+        if (e.target.value === "wiki") {
+            camera.alpha = Math.PI / 4;
+            camera.beta = Math.atan(1 / Math.sqrt(2));
+        } else {
+            camera.alpha = Math.PI / 4;
+            camera.beta = Math.atan(Math.SQRT2);
+        }
+    });
+});
+
+// Capture Logic
+window.instantCapture = async () => {
+    log("[CAPTURE] Starting...");
+    const oldColor = scene.clearColor;
+    scene.clearColor = new BABYLON.Color4(0, 0, 0, 0);
+    
+    // Higher res for better quality before crop
+    const screenshot = await BABYLON.Tools.CreateScreenshotAsync(engine, camera, { precision: 2 });
+    scene.clearColor = oldColor;
+
+    const img = new Image();
+    img.src = screenshot;
+    img.onload = () => {
+        const tempCanvas = document.createElement("canvas");
+        tempCanvas.width = img.width;
+        tempCanvas.height = img.height;
+        const ctx = tempCanvas.getContext("2d");
+        ctx.drawImage(img, 0, 0);
+        
+        const imageData = ctx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+        const data = imageData.data;
+        let minX = tempCanvas.width, minY = tempCanvas.height, maxX = 0, maxY = 0;
+        let found = false;
+
+        for (let y = 0; y < tempCanvas.height; y++) {
+            for (let x = 0; x < tempCanvas.width; x++) {
+                const alpha = data[(y * tempCanvas.width + x) * 4 + 3];
+                if (alpha > 0) {
+                    minX = Math.min(minX, x);
+                    minY = Math.min(minY, y);
+                    maxX = Math.max(maxX, x);
+                    maxY = Math.max(maxY, y);
+                    found = true;
+                }
+            }
+        }
+
+        if (!found) {
+            log("[CAPTURE] Failed: Image is empty.");
+            return;
+        }
+
+        const cropWidth = maxX - minX + 1;
+        const cropHeight = maxY - minY + 1;
+        const finalCanvas = document.createElement("canvas");
+        finalCanvas.width = cropWidth;
+        finalCanvas.height = cropHeight;
+        const finalCtx = finalCanvas.getContext("2d");
+        finalCtx.drawImage(tempCanvas, minX, minY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+        
+        const link = document.createElement("a");
+        link.download = `capture_${Date.now()}.png`;
+        link.href = finalCanvas.toDataURL("image/png");
+        link.click();
+        log("[CAPTURE] Done.");
+    };
+};
+
+// Listeners
 document.getElementById("schemInput").addEventListener("change", async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -354,6 +450,18 @@ document.getElementById("schemInput").addEventListener("change", async (e) => {
     const schem = await parseSchem(file);
     log(`[SCHEM] ${schem.name}`);
     await buildSchem(schem);
+});
+
+document.getElementById("buildBtn").addEventListener("click", async () => {
+    const input = document.getElementById("schemInput");
+    if (input.files.length > 0) {
+        const file = input.files[0];
+        await initAssets();
+        const schem = await parseSchem(file);
+        await buildSchem(schem);
+    } else {
+        alert("Please select a file first.");
+    }
 });
 
 log(`BloxdSchemViewer ${VERSION} ready.`);
