@@ -1,4 +1,4 @@
-const VERSION = "alpha-0.42-ratio-and-slab-rotation-fix";
+const VERSION = "alpha-0.43-slab-height-and-rot-fix";
 
 const logEl = document.getElementById("log");
 
@@ -301,21 +301,19 @@ async function buildSchem(schem) {
                 } else if (hp === 0) { // Bottom (Fixed: was reversed)
                     offset.y = -0.25;
                 } else if (hp === 2) { // Side
-                    // Base: Top Slab
-                    offset.y = 0.25;
-                    // rot 1: Z-, 2: X-, 3: Z+, 4: X+
+                    // Base: Top Slab (height 0.5, centered at y=0.25)
                     if (rot === 1) { // Z-
                         modelRot.x = Math.PI / 2;
-                        offset.y = 0; offset.z = -0.25;
+                        offset.y = -0.25; offset.z = -0.25;
                     } else if (rot === 2) { // X-
                         modelRot.z = Math.PI / 2;
-                        offset.y = 0; offset.x = -0.25;
+                        offset.y = 0.25; offset.x = -0.25;
                     } else if (rot === 3) { // Z+
                         modelRot.x = -Math.PI / 2;
-                        offset.y = 0; offset.z = 0.25;
+                        offset.y = -0.25; offset.z = 0.25;
                     } else if (rot === 4) { // X+
                         modelRot.z = -Math.PI / 2;
-                        offset.y = 0; offset.x = 0.25;
+                        offset.y = 0.25; offset.x = 0.25;
                     }
                 }
             }
