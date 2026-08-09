@@ -1,4 +1,4 @@
-const VERSION = "alpha-0.45-texture-rotation-fixed";
+const VERSION = "alpha-0.46-rotation-final-fix";
 
 const logEl = document.getElementById("log");
 
@@ -151,26 +151,24 @@ async function getRotatedTexture(name, deg) {
     if (!src) return null;
     return new Promise(resolve => {
         const img = new Image();
-        img.src = src;
         img.onload = () => {
             const c = document.createElement("canvas");
             c.width = 16; c.height = 16;
             const ctx = c.getContext("2d");
             ctx.imageSmoothingEnabled = false;
+            ctx.clearRect(0, 0, 16, 16);
+            ctx.save();
             ctx.translate(8, 8);
-            if (deg !== 0) ctx.rotate(deg * Math.PI / 180);
+            ctx.rotate(deg * Math.PI / 180);
             ctx.drawImage(img, -8, -8, 16, 16);
-            const tex = new BABYLON.DynamicTexture(key, { width: 16, height: 16 }, scene, false, BABYLON.Texture.NEAREST_SAMPLINGMODE);
-            const tctx = tex.getContext();
-            tctx.imageSmoothingEnabled = false;
-            tctx.clearRect(0, 0, 16, 16);
-            tctx.drawImage(c, 0, 0);
-            tex.update();
-            tex.updateSamplingMode(BABYLON.Texture.NEAREST_SAMPLINGMODE);
+            ctx.restore();
+            
+            const tex = new BABYLON.Texture(c.toDataURL(), scene, true, false, BABYLON.Texture.NEAREST_SAMPLINGMODE);
             textureCache.set(key, tex);
             resolve(tex);
         };
         img.onerror = () => resolve(null);
+        img.src = src;
     });
 }
 
@@ -240,7 +238,7 @@ function createFaceMesh(faceIndex, material, scaling, offset) {
     return plane;
 }
 
-const FACE_MAP = [4, 5, 1, 0, 2, 3]; // Bloxd order: Front, Back, Right, Left, Top, Bottom
+const FACE_MAP = [0, 1, 4, 5, 2, 3]; // Bloxd order: Front, Back, Right, Left, Top, Bottom
 const DEFAULT_ROTATIONS = { 
     0: 0,   // Front
     1: 0,   // Back
