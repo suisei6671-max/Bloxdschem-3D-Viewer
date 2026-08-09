@@ -1,4 +1,4 @@
-const VERSION = "alpha-0.41-build-fix";
+const VERSION = "alpha-0.42-ratio-and-slab-rotation-fix";
 
 const logEl = document.getElementById("log");
 
@@ -253,7 +253,8 @@ function createFaceMesh(faceIndex, material, scaling, offset) {
 }
 
 const FACE_MAP = [4, 5, 1, 0, 2, 3]; // Bloxd: Front, Back, Right, Left, Top, Bottom
-const FACE_ROTATION = { 0: 0, 1: 0, 2: 0, 3: 0, 4: -90, 5: -90 };
+// Top (4) rotated 90 deg right (90), Bottom (5) rotated 90 deg left (-90)
+const FACE_ROTATION = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 90, 5: -90 };
 
 async function buildSchem(schem) {
     clearScene();
@@ -293,25 +294,28 @@ async function buildSchem(schem) {
             let modelRot = new BABYLON.Vector3(0, 0, 0);
 
             if (isSlab) {
-                // All slabs start as a Top Slab (height 0.5, y=0.25)
                 scaling.y = 0.5;
                 
-                if (hp === 0) { // top
+                if (hp === 1) { // Top (Fixed: was reversed)
                     offset.y = 0.25;
-                } else if (hp === 1) { // bottom
+                } else if (hp === 0) { // Bottom (Fixed: was reversed)
                     offset.y = -0.25;
-                } else if (hp === 2) { // side
+                } else if (hp === 2) { // Side
                     // Base: Top Slab
                     offset.y = 0.25;
-                    // Rotate to side
-                    if (rot === 1) { // Z- (Front)
-                        modelRot.x = -Math.PI / 2;
-                    } else if (rot === 2) { // X- (Left)
-                        modelRot.z = Math.PI / 2;
-                    } else if (rot === 3) { // Z+ (Back)
+                    // rot 1: Z-, 2: X-, 3: Z+, 4: X+
+                    if (rot === 1) { // Z-
                         modelRot.x = Math.PI / 2;
-                    } else if (rot === 4) { // X+ (Right)
+                        offset.y = 0; offset.z = -0.25;
+                    } else if (rot === 2) { // X-
+                        modelRot.z = Math.PI / 2;
+                        offset.y = 0; offset.x = -0.25;
+                    } else if (rot === 3) { // Z+
+                        modelRot.x = -Math.PI / 2;
+                        offset.y = 0; offset.z = 0.25;
+                    } else if (rot === 4) { // X+
                         modelRot.z = -Math.PI / 2;
+                        offset.y = 0; offset.x = 0.25;
                     }
                 }
             }
